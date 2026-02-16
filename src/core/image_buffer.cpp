@@ -4,7 +4,7 @@
 vrt::ImageBuffer::ImageBuffer(int width, int height) :
 	width_(width),
 	height_(height),
-	pixels_(static_cast<std::size_t>(width)* static_cast<std::size_t>(height))
+	pixels_(static_cast<std::size_t>(width) * static_cast<std::size_t>(height))
 {
 	assert(width > 0 && height > 0);
 }

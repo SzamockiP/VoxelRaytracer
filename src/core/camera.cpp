@@ -1,0 +1,29 @@
+#include "voxel_rt/core/camera.hpp"
+#include "voxel_rt/math/math.hpp"
+#include <cassert>
+
+vrt::Camera::Camera(Vec3 position, Vec3 forward, float aspect_ratio, float fov, Vec3 world_up = Vec3{ 0,1,0 }) :
+	position_(position), forward_(forward), aspect_ratio_(aspect_ratio), fov_(fov), world_up_(world_up)
+{
+	assert(fov <= 0 || fov >= pi);
+	
+	right_ = normalize(cross(forward, world_up));
+	up_ = normalize(cross(right_, forward));
+
+	half_viewport_width_ = std::tanf(fov * 0.5f);
+	half_viewport_height_ = half_viewport_width_ / aspect_ratio_;
+};
+
+vrt::Ray vrt::Camera::get_ray(float u, float v) const noexcept
+{
+	Vec3 dir_world = {
+		normalize(
+			right_ * (u * half_viewport_width_) +
+			up_ * (v * half_viewport_height_) +
+			forward_
+		)
+	};
+
+	return Ray{ position_, dir_world };
+
+}

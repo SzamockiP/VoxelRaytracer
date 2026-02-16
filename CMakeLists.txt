@@ -12,7 +12,7 @@ target_sources(voxel_core
 	PRIVATE
 	"src/core/image_buffer.cpp"
 	"src/io/ppm_writer.cpp"
-)
+ "src/core/camera.cpp")
 
 target_include_directories(voxel_core
 	PUBLIC
