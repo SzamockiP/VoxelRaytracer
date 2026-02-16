@@ -10,12 +10,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(voxel_core)
 target_sources(voxel_core
 	PRIVATE
-		src/dummy.cpp
+	"src/core/image_buffer.cpp"
+	"src/io/ppm_writer.cpp"
 )
 
 target_include_directories(voxel_core
 	PUBLIC
 		${CMAKE_CURRENT_SOURCE_DIR}/src
+		${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 
