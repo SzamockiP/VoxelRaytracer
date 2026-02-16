@@ -2,10 +2,10 @@
 #include "voxel_rt/math/math.hpp"
 #include <cassert>
 
-vrt::Camera::Camera(Vec3 position, Vec3 forward, float aspect_ratio, float fov, Vec3 world_up = Vec3{ 0,1,0 }) :
+vrt::Camera::Camera(Vec3 position, Vec3 forward, float aspect_ratio, float fov, Vec3 world_up) :
 	position_(position), forward_(forward), aspect_ratio_(aspect_ratio), fov_(fov), world_up_(world_up)
 {
-	assert(fov <= 0 || fov >= pi);
+	assert(fov > 0 || fov < pi);
 	
 	right_ = normalize(cross(forward, world_up));
 	up_ = normalize(cross(right_, forward));

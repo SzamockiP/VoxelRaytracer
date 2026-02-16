@@ -8,7 +8,7 @@ namespace vrt
 class Camera
 {
 public:
-	Camera(Vec3 position, Vec3 forward, float aspect_ratio, float fov, Vec3 world_up);
+	Camera(Vec3 position, Vec3 forward, float aspect_ratio, float fov, Vec3 world_up = Vec3{ 0,1,0 });
 
 	Vec3 position() const noexcept { return position_; }
 	Vec3 direction() const noexcept {	return forward_; }

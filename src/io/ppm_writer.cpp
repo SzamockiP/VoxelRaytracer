@@ -1,5 +1,6 @@
 #include "voxel_rt/io/ppm_writer.hpp"
 #include <fstream>
+#include <algorithm>
 
 bool vrt::PpmWriter::write(const std::string& file_path, const ImageBuffer& image_buffer) const
 {
@@ -11,9 +12,10 @@ bool vrt::PpmWriter::write(const std::string& file_path, const ImageBuffer& imag
 	for (const auto& pixel : image_buffer.pixels())
 	{
 		const unsigned char rgb[3] = {
-			static_cast<unsigned char>(pixel.x * 255.f),
-			static_cast<unsigned char>(pixel.y * 255.f),
-			static_cast<unsigned char>(pixel.z * 255.f)
+
+			static_cast<unsigned char>(std::clamp(pixel.x * 255 + 0.5f , 0.f, 255.f)),
+			static_cast<unsigned char>(std::clamp(pixel.y * 255 + 0.5f, 0.f, 255.f)),
+			static_cast<unsigned char>(std::clamp(pixel.z * 255 + 0.5f, 0.f, 255.f))
 		};
 		out.write(reinterpret_cast<const char*>(rgb), 3);
 	}
