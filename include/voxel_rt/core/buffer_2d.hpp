@@ -15,27 +15,21 @@ namespace vrt
 	public:
 		Buffer2D() = default;
 		Buffer2D(std::size_t width, std::size_t height, const T& init = T{})
-			: width_(width), height_(height), data_(width* height, init) {};
-
-
+			: width_(width), height_(height), data_(width* height, init) {}
 
 		std::size_t width()  const noexcept { return width_; }
 		std::size_t height() const noexcept { return height_; }
 		std::size_t size() const noexcept { return data_.size(); }
 
-
-
-		bool in_bounds(std::size_t x, std::size_t y) const noexcept
+		constexpr bool in_bounds(std::size_t x, std::size_t y) const noexcept
 		{
 			return x < width_ && y < height_;
 		}
 
-		std::size_t index(int x, int y) const noexcept
+		constexpr std::size_t index(std::size_t x, std::size_t y) const noexcept
 		{
 			return x + width_ * y;
 		};
-
-
 
 		T& operator()(std::size_t x, std::size_t y) noexcept
 		{
@@ -46,8 +40,6 @@ namespace vrt
 		{
 			return data_[index(x, y)];
 		}
-
-
 
 		T& at(std::size_t x, std::size_t y)
 		{
@@ -61,8 +53,6 @@ namespace vrt
 			return data_[index(x, y)];
 		}
 
-
-
 		T* data() noexcept 
 		{
 			return data_.data(); 
@@ -73,19 +63,15 @@ namespace vrt
 			return data_.data(); 
 		}
 
-
-
 		std::span<T> span() noexcept 
 		{ 
-			return std::span<T>(data_); 
+			return data_; 
 		}
 
 		std::span<const T> span() const noexcept 
 		{ 
-			return std::span<const T>(data_); 
+			return data_; 
 		}
-
-
 
 		void fill(const T& v)
 		{
@@ -93,9 +79,9 @@ namespace vrt
 		}
 
 	private:
+		std::size_t width_ = 0;
+		std::size_t height_ = 0;
 		std::vector<T> data_;
-		const std::size_t width_ = 0;
-		const std::size_t height_ = 0;
 	};
 
 }

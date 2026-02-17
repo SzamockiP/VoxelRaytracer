@@ -1,6 +1,7 @@
 #pragma once
 #include <concepts>
 #include <type_traits>
+#include <cmath>
 
 
 namespace vrt {
@@ -8,7 +9,7 @@ namespace vrt {
     template<typename T>
     concept Arithmetic = std::is_arithmetic_v<T>;
 
-    template<Arithmetic T = float>
+    template<Arithmetic T>
     struct Vec3
     {
         T x{}, y{}, z{};
@@ -35,16 +36,17 @@ namespace vrt {
             return Vec3<R>{ lhs.x + rhs.x, lhs.y + rhs.y, lhs.z + rhs.z };
         }
 
-        friend constexpr auto operator+(const Vec3& lhs, Arithmetic auto rhs) noexcept
+        template<Arithmetic U>
+        friend constexpr auto operator+(const Vec3& lhs, U rhs) noexcept
         {
             using R = std::common_type_t<T, U>;
             return Vec3<R>{ lhs.x + rhs, lhs.y + rhs, lhs.z + rhs };
         }
 
-        friend constexpr auto operator+(Arithmetic auto lhs, const Vec3& rhs) noexcept
+        template<Arithmetic U>
+        friend constexpr auto operator+(U lhs, const Vec3& rhs) noexcept
         {
-            using R = std::common_type_t<T, U>;
-            return Vec3<R>{ lhs + rhs.x, lhs + rhs.y, lhs + rhs.z };
+            return rhs + lhs;
         }
 
         template<Arithmetic U>
@@ -54,16 +56,17 @@ namespace vrt {
             return Vec3<R>{ lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z };
         }
 
-        friend constexpr auto operator-(const Vec3& lhs, Arithmetic auto rhs) noexcept
+        template<Arithmetic U>
+        friend constexpr auto operator-(const Vec3& lhs, U rhs) noexcept
         {
             using R = std::common_type_t<T, U>;
             return Vec3<R>{ lhs.x - rhs, lhs.y - rhs, lhs.z - rhs };
         }
 
-        friend constexpr auto operator-(Arithmetic auto lhs, const Vec3& rhs) noexcept
+        template<Arithmetic U>
+        friend constexpr auto operator-(U lhs, const Vec3& rhs) noexcept
         {
-            using R = std::common_type_t<T, U>;
-            return Vec3<R>{ lhs - rhs.x, lhs - rhs.y, lhs - rhs.z };
+            return rhs - lhs;
         }
 
         template<Arithmetic U>
@@ -73,16 +76,17 @@ namespace vrt {
             return Vec3<R>{ lhs.x * rhs.x, lhs.y * rhs.y, lhs.z * rhs.z };
         }
 
-        friend constexpr auto operator*(const Vec3& lhs, Arithmetic auto rhs) noexcept
+        template<Arithmetic U>
+        friend constexpr auto operator*(const Vec3& lhs, U rhs) noexcept
         {
             using R = std::common_type_t<T, U>;
             return Vec3<R>{ lhs.x * rhs, lhs.y * rhs, lhs.z * rhs };
         }
 
-        friend constexpr auto operator*(Arithmetic auto lhs, const Vec3& rhs) noexcept
+        template<Arithmetic U>
+        friend constexpr auto operator*(U lhs, const Vec3& rhs) noexcept
         {
-            using R = std::common_type_t<T, U>;
-            return Vec3<R>{ lhs * rhs.x, lhs * rhs.y, lhs * rhs.z };
+            return rhs * lhs;
         }
         
         template<Arithmetic U>
@@ -92,16 +96,17 @@ namespace vrt {
             return Vec3<R>{ lhs.x / rhs.x, lhs.y / rhs.y, lhs.z / rhs.z };
         }
 
-        friend constexpr auto operator/(const Vec3& lhs, Arithmetic auto rhs) 
+        template<Arithmetic U>
+        friend constexpr auto operator/(const Vec3& lhs, U rhs) 
         {
             using R = std::common_type_t<T, U>;
             return Vec3<R>{ lhs.x / rhs, lhs.y / rhs, lhs.z / rhs };
         }
 
-        friend constexpr auto operator/(Arithmetic auto lhs, const Vec3& rhs) 
+        template<Arithmetic U>
+        friend constexpr auto operator/(U lhs, const Vec3& rhs) 
         {
-            using R = std::common_type_t<T, U>;
-            return Vec3<R>{ lhs / rhs.x, lhs / rhs.y, lhs / rhs.z };
+            return rhs / lhs;
         }
 
 
@@ -148,5 +153,42 @@ namespace vrt {
     using Vec3f = Vec3<float>;
     using Vec3i = Vec3<int>;
     using Vec3d = Vec3<double>;
+
+    template<Arithmetic T>
+    inline constexpr auto length_sq(const Vec3<T>& v) noexcept
+    {
+        return v.x * v.x + v.y * v.y + v.z * v.z;
+    }
+
+    template<Arithmetic T>
+    inline const auto length(const Vec3<T>& v) noexcept
+        requires std::floating_point<T>
+    {
+        return std::sqrt(length_sq(v));
+    }
+
+    template<Arithmetic T, Arithmetic U>
+    inline constexpr auto dot(const Vec3<T>& a, const Vec3<U>& b) noexcept
+    {
+        return a.x * b.x + a.y * b.y + a.z * b.z;
+    }
+
+    template<Arithmetic T, Arithmetic U>
+    inline constexpr auto cross(const Vec3<T>& a, const Vec3<U>& b) noexcept
+    {
+        return Vec3{
+            a.y * b.z - a.z * b.y,
+            a.z * b.x - a.x * b.z,
+            a.x * b.y - a.y * b.x
+        };
+    }
+
+    template<Arithmetic T>
+    inline constexpr auto normalize(const Vec3<T>& v) noexcept
+        requires std::floating_point<T>
+    {
+        T len = length(v);
+        return (len > 0.f) ? Vec3<T>{ v.x / len, v.y / len, v.z / len } : Vec3<T>{};
+    }
 }
 

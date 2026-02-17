@@ -1,11 +1,13 @@
 #include "voxel_rt/core/camera.hpp"
 #include "voxel_rt/math/math.hpp"
+#include "voxel_rt/math/vec3.hpp"
+#include <cmath>
 #include <cassert>
 
 vrt::Camera::Camera(Vec3f position, Vec3f forward, float aspect_ratio, float fov, Vec3f world_up) :
 	position_(position), forward_(forward), aspect_ratio_(aspect_ratio), fov_(fov), world_up_(world_up)
 {
-	assert(fov > 0 || fov < pi);
+	assert(fov > 0 || fov < pi_f);
 	
 	right_ = normalize(cross(forward, world_up));
 	up_ = normalize(cross(right_, forward));

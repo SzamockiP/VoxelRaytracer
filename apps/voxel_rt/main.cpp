@@ -9,7 +9,6 @@ using namespace vrt;
 int main()
 {
 	std::print("voxel_rt: hello");
-	//ImageBuffer image_buffer{ 160,100 };
 	Buffer2D<Vec3f> image_buffer{ 160,100 };
 
 	Camera camera {
@@ -25,7 +24,6 @@ int main()
 		{
 			float u = (static_cast<float>(x) / image_buffer.width()) * 2 - 1;
 			float v = 1.0f - ((static_cast<float>(y) + 0.5f) / image_buffer.height()) * 2.0f;
-			//image_buffer.set_pixel(x, y, camera.get_ray(u, v).direction);
 			image_buffer(x, y) = camera.get_ray(u, v).direction;
 		}
 	}
