@@ -4,12 +4,14 @@
 #include "voxel_rt/core/ray.hpp"
 #include "voxel_rt/math/vec3.hpp"
 #include "voxel_rt/io/ppm_writer.hpp"
+#include "voxel_rt/core/buffer_2d.hpp"
 
 using namespace vrt;
 int main()
 {
 	std::print("voxel_rt: hello");
-	ImageBuffer image_buffer{ 160,100 };
+	//ImageBuffer image_buffer{ 160,100 };
+	Buffer2D<Vec3> image_buffer{ 160,100 };
 
 	Camera camera {
 		Vec3{0,0,0},
@@ -24,7 +26,8 @@ int main()
 		{
 			float u = (static_cast<float>(x) / image_buffer.width()) * 2 - 1;
 			float v = 1.0f - ((static_cast<float>(y) + 0.5f) / image_buffer.height()) * 2.0f;
-			image_buffer.set_pixel(x, y, camera.get_ray(u, v).direction);
+			//image_buffer.set_pixel(x, y, camera.get_ray(u, v).direction);
+			image_buffer(x, y) = camera.get_ray(u, v).direction;
 		}
 	}
 
