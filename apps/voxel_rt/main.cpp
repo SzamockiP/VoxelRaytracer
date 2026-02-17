@@ -10,11 +10,11 @@ int main()
 {
 	std::print("voxel_rt: hello");
 	//ImageBuffer image_buffer{ 160,100 };
-	Buffer2D<Vec3> image_buffer{ 160,100 };
+	Buffer2D<Vec3f> image_buffer{ 160,100 };
 
 	Camera camera {
-		Vec3{0,0,0},
-		Vec3{1.f,1.f,-1},
+		Vec3f{0,0,0},
+		Vec3f{1.f,1.f,-1},
 		16.f/10,
 		3.14f/2
 	};

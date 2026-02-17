@@ -9,7 +9,7 @@ namespace vrt
 class PpmWriter
 {
 public:
-	bool write(const std::string& file_path, const Buffer2D<Vec3>& image_buffer) const;
+	bool write(const std::string& file_path, const Buffer2D<Vec3f>& image_buffer) const;
 };
 
 }

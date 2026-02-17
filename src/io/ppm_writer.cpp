@@ -2,7 +2,7 @@
 #include <fstream>
 #include <algorithm>
 
-bool vrt::PpmWriter::write(const std::string& file_path, const Buffer2D<Vec3>& image_buffer) const
+bool vrt::PpmWriter::write(const std::string& file_path, const Buffer2D<Vec3f>& image_buffer) const
 {
 	std::ofstream out(file_path, std::ios::binary);
 	if (!out) return false;
