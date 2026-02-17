@@ -11,7 +11,7 @@ add_library(voxel_core)
 target_sources(voxel_core
 	PRIVATE
 	"src/io/ppm_writer.cpp"
-	"src/core/image_buffer.cpp"
+	
  "src/core/camera.cpp" )
 
 target_include_directories(voxel_core

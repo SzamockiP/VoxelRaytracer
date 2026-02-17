@@ -1,5 +1,4 @@
 #include <print>
-#include "voxel_rt/core/image_buffer.hpp"
 #include "voxel_rt/core/camera.hpp"
 #include "voxel_rt/core/ray.hpp"
 #include "voxel_rt/math/vec3.hpp"
