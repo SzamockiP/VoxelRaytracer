@@ -18,6 +18,20 @@ namespace vrt {
         constexpr Vec3(T s) : x(s), y(s), z(s) {}
         constexpr Vec3(T x_, T y_, T z_) : x(x_), y(y_), z(z_) {}
 
+        constexpr T operator[](std::size_t i) const noexcept
+        {
+            if (i == 0) return x;
+            if (i == 1) return y;
+            return z;
+        }
+
+        constexpr T& operator[](std::size_t i) noexcept
+        {
+            if (i == 0) return x;
+            if (i == 1) return y;
+            return z;
+        }
+
         constexpr bool operator==(const Vec3&) const = default;
 
         constexpr auto operator-() const noexcept
