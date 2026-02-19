@@ -9,6 +9,6 @@ namespace vrt
 		Vec3f min;
 		Vec3f max;
 
-		constexpr bool intersect(const Ray& ray) const noexecept;
+		constexpr bool intersect(const Ray& ray) const noexcept;
 	};
 }

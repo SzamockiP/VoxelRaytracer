@@ -15,7 +15,7 @@ namespace vrt
 	public:
 		Buffer2D() = default;
 		Buffer2D(std::size_t width, std::size_t height, const T& init = T{})
-			: width_(width), height_(height), data_(width* height, init) {}
+			: width_(width), height_(height), data_(width_ * height_, init) {}
 
 		std::size_t width()  const noexcept { return width_; }
 		std::size_t height() const noexcept { return height_; }
@@ -43,13 +43,13 @@ namespace vrt
 
 		T& at(std::size_t x, std::size_t y)
 		{
-			if (!in_bounds(x, y)) throw std::out_of_range("Buffer2D::at out of range");
+			if (!in_bounds(x, y)) throw std::out_of_range("[vrt::Buffer2D::at] out of range");
 			return data_[index(x, y)];
 		}
 
 		const T& at(std::size_t x, std::size_t y) const
 		{
-			if (!in_bounds(x, y)) throw std::out_of_range("Buffer2D::at out of range");
+			if (!in_bounds(x, y)) throw std::out_of_range("[vrt::Buffer2D::at] out of range");
 			return data_[index(x, y)];
 		}
 

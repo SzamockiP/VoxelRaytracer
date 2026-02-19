@@ -1,6 +1,6 @@
 #include <print>
 #include "voxel_rt/core/camera.hpp"
-#include "voxel_rt/core/ray.hpp"
+#include "voxel_rt/math/ray.hpp"
 #include "voxel_rt/math/vec3.hpp"
 #include "voxel_rt/math/math.hpp"
 #include "voxel_rt/io/ppm_writer.hpp"
