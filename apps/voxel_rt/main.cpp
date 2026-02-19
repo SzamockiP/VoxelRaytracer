@@ -5,6 +5,7 @@
 #include "voxel_rt/math/math.hpp"
 #include "voxel_rt/io/ppm_writer.hpp"
 #include "voxel_rt/core/buffer_2d.hpp"
+#include "voxel_rt/core/voxel_grid.hpp"
 
 using namespace vrt;
 int main()
@@ -17,6 +18,12 @@ int main()
 		16.f / 10,
 		deg_to_rad(90.f)
 	};
+
+	VoxelGrid voxel_grid{ 64 };
+
+	std::print("{0} {1} {2}", voxel_grid.bounds().min.x, voxel_grid.bounds().min.y, voxel_grid.bounds().min.z);
+
+
 
 	for (int y = 0; y < image_buffer.height(); ++y)
 	{
