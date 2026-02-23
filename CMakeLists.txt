@@ -12,7 +12,7 @@ target_sources(voxel_core
 	PRIVATE
 	"src/io/ppm_writer.cpp"
 	"src/core/camera.cpp"
-    "src/math/aabb.cpp" )
+    "src/math/aabb.cpp"  "src/voxel/dag_pool_manager.cpp")
 
 target_include_directories(voxel_core
 	PUBLIC
