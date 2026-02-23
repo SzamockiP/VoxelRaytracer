@@ -120,7 +120,8 @@ namespace vrt {
         template<Arithmetic U>
         friend constexpr auto operator/(U lhs, const Vec3& rhs) 
         {
-            return rhs / lhs;
+            using R = std::common_type_t<T, U>;
+            return Vec3<R>{ lhs / rhs.x, lhs / rhs.y, lhs / rhs.z };
         }
 
 

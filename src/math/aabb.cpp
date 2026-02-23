@@ -1,7 +1,7 @@
 #include "voxel_rt/math/aabb.hpp"
 #include <algorithm>
 
-constexpr bool vrt::AABB::intersect(const Ray& ray) const noexcept
+bool vrt::AABB::intersect(const Ray& ray) const noexcept
 {
 	float tmin = 0.0f;
 	float tmax = std::numeric_limits<float>::infinity();
