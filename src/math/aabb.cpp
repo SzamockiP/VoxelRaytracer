@@ -1,4 +1,4 @@
-#include "voxel_rt/math/aabb.hpp"
+#include <vrt/math/aabb.hpp>
 #include <algorithm>
 
 bool vrt::AABB::intersect(const Ray& ray) const noexcept

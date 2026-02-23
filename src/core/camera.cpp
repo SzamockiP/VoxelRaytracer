@@ -1,6 +1,6 @@
-#include "voxel_rt/core/camera.hpp"
-#include "voxel_rt/math/math.hpp"
-#include "voxel_rt/math/vec3.hpp"
+#include <vrt/core/camera.hpp>
+#include <vrt/math/math.hpp>
+#include <vrt/math/vec3.hpp>
 #include <cmath>
 #include <cassert>
 

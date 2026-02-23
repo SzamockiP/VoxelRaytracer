@@ -1,4 +1,4 @@
-#include "voxel_rt/io/ppm_writer.hpp"
+#include <vrt/io/ppm_writer.hpp>
 #include <fstream>
 #include <algorithm>
 
