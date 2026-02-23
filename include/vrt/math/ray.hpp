@@ -1,5 +1,5 @@
 #pragma once
-#include "voxel_rt/math/vec3.hpp"
+#include <vrt/math/vec3.hpp>
 
 namespace vrt
 {

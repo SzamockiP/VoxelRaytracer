@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
-#include "voxel_rt/core/buffer_2d.hpp"
-#include "voxel_rt/math/Vec3.hpp"
+#include <vrt/core/buffer_2d.hpp>
+#include <vrt/math/Vec3.hpp>
 
 namespace vrt
 {

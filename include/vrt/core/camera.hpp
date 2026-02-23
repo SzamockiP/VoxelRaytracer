@@ -1,6 +1,6 @@
 #pragma once
-#include "voxel_rt/math/vec3.hpp"
-#include "voxel_rt/math/ray.hpp"
+#include <vrt/math/vec3.hpp>
+#include <vrt/math/ray.hpp>
 
 namespace vrt
 {
