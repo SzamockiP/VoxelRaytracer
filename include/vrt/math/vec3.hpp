@@ -18,6 +18,9 @@ namespace vrt {
         constexpr Vec3(T s) : x(s), y(s), z(s) {}
         constexpr Vec3(T x_, T y_, T z_) : x(x_), y(y_), z(z_) {}
 
+        template<Arithmetic U>
+        constexpr Vec3<T>(const Vec3<U>& v) : x(static_cast<T>(v.x)), y(static_cast<T>(v.y)), z(static_cast<T>(v.z)) {}
+
         constexpr T operator[](std::size_t i) const noexcept
         {
             if (i == 0) return x;

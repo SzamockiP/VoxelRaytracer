@@ -1,6 +1,7 @@
 #pragma once
 #include <vrt/math/vec3.hpp>
 #include <vrt/math/ray.hpp>
+#include <vrt/core/ray_hit.hpp>
 
 namespace vrt
 {
@@ -9,6 +10,6 @@ namespace vrt
 		Vec3f min;
 		Vec3f max;
 
-		bool intersect(const Ray& ray) const noexcept;
+		RayHit intersect(const Ray& ray) const noexcept;
 	};
 }
