@@ -10,12 +10,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(voxel_core)
 target_sources(voxel_core
 	PRIVATE
-		src/dummy.cpp
-)
+	"src/io/ppm_writer.cpp"
+	"src/core/camera.cpp"
+    "src/math/aabb.cpp"  "src/voxel/dag_pool_manager.cpp")
 
 target_include_directories(voxel_core
 	PUBLIC
 		${CMAKE_CURRENT_SOURCE_DIR}/src
+		${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 
