@@ -1,7 +1,14 @@
 ﻿#include <vrt/voxel/dag_pool_manager.hpp>
+#include <algorithm>
 
 std::uint32_t vrt::DagPoolManager::AddNode(const Node& node)
 {
+	// check if empty
+	if (std::ranges::all_of(node.indices, [](auto x) { return x == EMPTY; }))
+	{
+		return EMPTY;
+	}
+
 	auto kv = node_indices.find(node);
 	// exists
 	if (kv != node_indices.end())
@@ -34,6 +41,12 @@ std::uint32_t vrt::DagPoolManager::AddNode(const Node& node)
 
 std::uint32_t vrt::DagPoolManager::AddLeaf(const Leaf& leaf)
 {
+	// check if empty
+	if (std::ranges::all_of(leaf.voxels, [](auto x) { return x == 0; }))
+	{
+		return EMPTY;
+	}
+
 	auto kv = leaf_indices.find(leaf);
 	// exists
 	if (kv != leaf_indices.end())

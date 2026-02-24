@@ -3,9 +3,12 @@
 #include <unordered_map>
 #include <vrt/voxel/node_hasher.hpp>
 #include <vrt/voxel/leaf_hasher.hpp>
+#include <limits>
+
 
 namespace vrt
 {
+
 	class DagPoolManager
 	{
 	public:
@@ -25,4 +28,6 @@ namespace vrt
 		std::vector<std::uint32_t> leaf_refcounts;
 		std::vector<std::uint32_t> free_leaf_indices_;
 	};
+
+	const std::uint32_t EMPTY = std::numeric_limits<unsigned int>::max();
 }

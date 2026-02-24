@@ -54,37 +54,62 @@ int main()
 */
 
 using namespace vrt;
+
+DagPoolManager manager{};
+int shape(const Vec3f& pos)
+{
+	return length(pos) <= 120 ? 1 : 0;
+}
+
+std::uint32_t build_tree(Vec3i min, Vec3i max)
+{
+	Vec3i size = max - min;
+	Vec3i half_size = size / 2;
+	Vec3i center = min + half_size;
+
+	if (max - min == Vec3{2})
+	{
+		Leaf l{ 
+			shape(center - Vec3f{ -0.5f, -0.5f, -0.5f }),
+			shape(center - Vec3f{  0.5f, -0.5f, -0.5f }),
+			shape(center - Vec3f{ -0.5f,  0.5f, -0.5f }),
+			shape(center - Vec3f{  0.5f,  0.5f, -0.5f }),
+			shape(center - Vec3f{ -0.5f, -0.5f,  0.5f }),
+			shape(center - Vec3f{  0.5f, -0.5f,  0.5f }),
+			shape(center - Vec3f{ -0.5f,  0.5f,  0.5f }),
+			shape(center - Vec3f{  0.5f,  0.5f,  0.5f })
+		};
+
+		return manager.AddLeaf(l);
+	}
+	else
+	{
+		Vec3i right = { half_size.x, 0, 0 };
+		Vec3i up	   = { 0, half_size.y, 0 };
+		Vec3i back  = { 0, 0, half_size.z };
+		Node n = {
+			build_tree(min, min + half_size),
+			build_tree(min + right, max - back - up),
+			build_tree(min + up, max - back - right),
+			build_tree(min + right + up, max - back),
+			build_tree(min + back, max - right - up),
+			build_tree(min + back + right, max - up),
+			build_tree(min + up + back, max - right),
+			build_tree(min + half_size, max)
+		};
+		return manager.AddNode(n);
+	}
+}
+
 int main()
 {
-    DagPoolManager manager{};
+	int root_idx = build_tree(Vec3i{ -128 }, Vec3i{ 128 });
+	int root_idx2 = build_tree(Vec3i{ -64 }, Vec3i{ 64 });
 
-    Node leaf1 = { .indices = {0,2,0,0,0,0,0,0} };
-    Node leaf2 = { .indices = {0,2,0,0,0,0,0,0} };
-    Node leaf3 = { .indices = {0,3,0,0,0,0,0,0} };
-
-    uint32_t idx1 = manager.AddNode(leaf1);
-    std::println("Dodano leaf1 pod indeksem: {}", idx1);
-
-    uint32_t idx2 = manager.AddNode(leaf2);
-    std::println("Dodano leaf2 pod indeksem: {}", idx2);
-
-    uint32_t idx3 = manager.AddNode(leaf3);
-    std::println("Dodano leaf3 pod indeksem: {}", idx3);
-
-    Node root = { .indices = {idx1, idx3, 0, 0, 0, 0, 0, 0} };
-    uint32_t root_idx = manager.AddNode(root);
-    std::println("Dodano root  pod indeksem: {}", root_idx);
-
-    const auto& nodes = manager.dagPool().nodes;
-    for (size_t i = 0; i < nodes.size(); ++i)
-    {
-        std::print("Indeks [{}] -> [ ", i);
-        for (uint32_t child_idx : nodes[i].indices)
-        {
-            std::print("{} ", child_idx);
-        }
-        std::print("]\n");
-    }
+	std::println("Root index: {}", root_idx);
+	std::println("Root index: {}", root_idx2);
+	std::println("Leaves: {}", manager.dagPool().leaves.size() );
+	std::println("Nodes:  {}", manager.dagPool().nodes.size());
 
     return 0;
 }
