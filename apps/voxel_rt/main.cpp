@@ -11,6 +11,7 @@
 #include <vrt/core/ray_hit.hpp>
 #include <algorithm>
 #include <cmath>
+#include <vrt/gfx/window.hpp>
 
 using namespace vrt;
 
@@ -18,7 +19,7 @@ constexpr float float_inf = std::numeric_limits<float>::infinity();
 
 std::uint32_t shape_gyroid(const Vec3f& pos)
 {
-    Vec3f p = pos * 0.8f;
+    Vec3f p = pos * 0.5f;
 
     float val = std::sin(p.x) * std::cos(p.y) +
         std::sin(p.y) * std::cos(p.z) +
@@ -184,15 +185,24 @@ RayHit trace_ray(const DagPoolManager& manager, const Ray& ray, std::uint32_t cu
 
 int main()
 {
-    DagPoolManager manager{};
+    Window window{ 720, 480, "voxel_rt" };
+
+    while (!window.should_close())
+    {
+        window.pool_events();
+        window.swap_buffers();
+    }
+
+
+    /*DagPoolManager manager{};
 	const int width = 720;
 	const int height = 480;
 	Buffer2D<Vec3f> vec_dir_buffer{ width,height };
 	Buffer2D<Vec3f> color_buffer{ width,height };
 
 	Camera camera{
-		Vec3f{72},
-		normalize(Vec3f{-0.5}),
+		Vec3f{32,70,72},
+		normalize(Vec3f{0,-0.5,-0.5}),
         static_cast<float>(width) / height,
 		deg_to_rad(120.f)
 	};
@@ -235,5 +245,5 @@ int main()
 
 	writer.write("out.ppm", color_buffer);
 
-    return 0;
+    return 0;*/
 }
