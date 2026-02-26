@@ -31,8 +31,8 @@ std::uint32_t shape_gyroid(const Vec3f& pos)
 }
 std::uint32_t shape_torus(const Vec3f& pos)
 {
-    const float major_radius = 16.0f;
-    const float minor_radius = 8.0f;
+    const float major_radius = 8.0f;
+    const float minor_radius = 4.0f;
 
     float q = std::sqrt(pos.x * pos.x + pos.z * pos.z) - major_radius;
 
@@ -204,28 +204,27 @@ void processInput(const Window& window, Camera& camera, float dt)
 
 int main()
 {
-    const int width = 720;
-    const int height = 480;
+    const int window_width = 1280;
+    const int window_height = 720;
 
-    Window window{ width, height, "voxel_rt" };
-    Presenter presenter{ width, height };
-    Buffer2D<Vec3f> vec_dir_buffer{ width,height };
-    Buffer2D<Vec3f> color_buffer{ width,height };
+    const int resolution_width = 192;
+    const int resolution_height = 144;
+
+    Window window{ window_width, window_height, "voxel_rt" };
+    Presenter presenter{ resolution_width, resolution_height };
+    Buffer2D<Vec3f> vec_dir_buffer{ resolution_width,resolution_height };
+    Buffer2D<Vec3f> color_buffer{ resolution_width,resolution_height };
 
     Camera camera{
-        static_cast<float>(width) / height,
-        radians(120.f)
+        static_cast<float>(resolution_width) / resolution_height,
+        radians(120.f),
+        -90.f, 0, {64},
     };
 
-    for (int y = 0; y < height; ++y)
-    {
-        for (int x = 0; x < width; ++x)
-        {
-            float u = (static_cast<float>(x) / vec_dir_buffer.width()) * 2 - 1;
-            float v = 1.0f - ((static_cast<float>(y) + 0.5f) / vec_dir_buffer.height()) * 2.0f;
-            vec_dir_buffer(x, y) = normalize(camera.get_ray(u, v).direction);
-        }
-    }
+    DagPoolManager manager{};
+    const AABB chunk_volume{ .min = {-64}, .max = {64} };
+
+    std::uint32_t root_idx = build_tree(manager, chunk_volume.min, chunk_volume.max);
 
     float current_frame_time = 0.0f;
     float last_frame_time = 0.0f;
@@ -243,38 +242,45 @@ int main()
         window.get_mouse_delta(dx, dy);
         processInput(window, camera, delta_time);
 
-        if (dx != 0.0f || dy != 0.0f)
-        {
-            camera.ProcessMouseMovement(dx, dy);
+        camera.ProcessMouseMovement(dx, dy);
 
-            for (int y = 0; y < height; ++y)
+        for (int y = 0; y < resolution_height; ++y)
+        {
+            for (int x = 0; x < resolution_width; ++x)
             {
-                for (int x = 0; x < width; ++x)
-                {
-                    float u = (static_cast<float>(x) / width) * 2 - 1;
-                    float v = 1.0f - (static_cast<float>(y) / height) * 2.0f;
-                    vec_dir_buffer(x, y) = normalize(camera.get_ray(u, v).direction);
-                }
+                float u = (static_cast<float>(x) / resolution_width) * 2 - 1;
+                float v = 1.0f - (static_cast<float>(y) / resolution_height) * 2.0f;
+                vec_dir_buffer(x, y) = normalize(camera.get_ray(u, v).direction);
             }
         }
 
-        presenter.present(reinterpret_cast<const float*>(vec_dir_buffer.data()));
+        //float highest_t = 0;
+        for (int y = 0; y < resolution_height; ++y)
+        {
+            for (int x = 0; x < resolution_width; ++x)
+            {
+                const Ray r{ camera.position(), vec_dir_buffer(x, y) , 1 / vec_dir_buffer(x, y) };
+                RayHit result = trace_ray(manager, r, root_idx, 6, chunk_volume);
+                //color_buffer(x, y) = result.t != float_inf ? Vec3f{ 1.0f - result.t / 100 } : Vec3f{ float_inf };
+                color_buffer(x, y) = Vec3{ 1.0f - std::pow(result.t/64, 0.25f) };
+                //highest_t = result.t > highest_t && result.t != float_inf ? result.t : highest_t;
+            }
+        }
+
+        /*for (int y = 0; y < resolution_height; ++y)
+        {
+            for (int x = 0; x < resolution_width; ++x)
+            {
+                color_buffer(x, y) = Vec3f{ 1 } - (color_buffer(x, y) / highest_t);
+            }
+        }*/
+
+        presenter.present(reinterpret_cast<const float*>(color_buffer.data()));
         window.swap_buffers();
     }
 
 
-    /*DagPoolManager manager{};
-	const int width = 720;
-	const int height = 480;
-	Buffer2D<Vec3f> vec_dir_buffer{ width,height };
-	Buffer2D<Vec3f> color_buffer{ width,height };
-
-	Camera camera{
-		Vec3f{32,70,72},
-		normalize(Vec3f{0,-0.5,-0.5}),
-        static_cast<float>(width) / height,
-		deg_to_rad(120.f)
-	};
+    /*
 
 	const AABB chunk_volume{ .min = {-64}, .max = {64} };
 
