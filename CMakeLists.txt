@@ -29,7 +29,7 @@ add_library(vrt STATIC
 	"src/core/camera.cpp"
     "src/math/aabb.cpp" 
 	"src/voxel/dag_pool_manager.cpp"
- "src/gfx/window.cpp")
+ "src/gfx/window.cpp" "src/gfx/presenter.cpp")
 
 target_include_directories(vrt PUBLIC include)
 

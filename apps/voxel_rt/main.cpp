@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <cmath>
 #include <vrt/gfx/window.hpp>
+#include <vrt/gfx/presenter.hpp>
+#include <GLFW/glfw3.h>
 
 using namespace vrt;
 
@@ -183,13 +185,80 @@ RayHit trace_ray(const DagPoolManager& manager, const Ray& ray, std::uint32_t cu
     return { float_inf };
 }
 
+
+void processInput(const Window& window, Camera& camera, float dt)
+{
+    if (window.is_key_pressed(GLFW_KEY_W))
+        camera.ProcessKeyboard(Direction::Forward, dt);
+    if (window.is_key_pressed(GLFW_KEY_S))
+        camera.ProcessKeyboard(Direction::Backward, dt);
+    if (window.is_key_pressed(GLFW_KEY_A))
+        camera.ProcessKeyboard(Direction::Left, dt);
+    if (window.is_key_pressed(GLFW_KEY_D))
+        camera.ProcessKeyboard(Direction::Right, dt);
+    if (window.is_key_pressed(GLFW_KEY_E))
+        camera.ProcessKeyboard(Direction::Up, dt);
+    if (window.is_key_pressed(GLFW_KEY_Q))
+        camera.ProcessKeyboard(Direction::Down, dt);
+}
+
 int main()
 {
-    Window window{ 720, 480, "voxel_rt" };
+    const int width = 720;
+    const int height = 480;
+
+    Window window{ width, height, "voxel_rt" };
+    Presenter presenter{ width, height };
+    Buffer2D<Vec3f> vec_dir_buffer{ width,height };
+    Buffer2D<Vec3f> color_buffer{ width,height };
+
+    Camera camera{
+        static_cast<float>(width) / height,
+        radians(120.f)
+    };
+
+    for (int y = 0; y < height; ++y)
+    {
+        for (int x = 0; x < width; ++x)
+        {
+            float u = (static_cast<float>(x) / vec_dir_buffer.width()) * 2 - 1;
+            float v = 1.0f - ((static_cast<float>(y) + 0.5f) / vec_dir_buffer.height()) * 2.0f;
+            vec_dir_buffer(x, y) = normalize(camera.get_ray(u, v).direction);
+        }
+    }
+
+    float current_frame_time = 0.0f;
+    float last_frame_time = 0.0f;
+    float delta_time = 0.0f;
 
     while (!window.should_close())
     {
+        current_frame_time = glfwGetTime();
+        delta_time = current_frame_time - last_frame_time;
+        last_frame_time = current_frame_time;
+        
         window.pool_events();
+
+        float dx = 0.0f, dy = 0.0f;
+        window.get_mouse_delta(dx, dy);
+        processInput(window, camera, delta_time);
+
+        if (dx != 0.0f || dy != 0.0f)
+        {
+            camera.ProcessMouseMovement(dx, dy);
+
+            for (int y = 0; y < height; ++y)
+            {
+                for (int x = 0; x < width; ++x)
+                {
+                    float u = (static_cast<float>(x) / width) * 2 - 1;
+                    float v = 1.0f - (static_cast<float>(y) / height) * 2.0f;
+                    vec_dir_buffer(x, y) = normalize(camera.get_ray(u, v).direction);
+                }
+            }
+        }
+
+        presenter.present(reinterpret_cast<const float*>(vec_dir_buffer.data()));
         window.swap_buffers();
     }
 
