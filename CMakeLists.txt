@@ -38,6 +38,7 @@ target_link_libraries(vrt PUBLIC glfw glad)
 find_package(OpenGL REQUIRED)
 target_link_libraries(vrt PUBLIC OpenGL::GL)
 
+
 if(MSVC)
 	target_compile_options(vrt PRIVATE /W4 /permissive-)
 else()
@@ -45,4 +46,6 @@ else()
 endif()
 
 add_executable(voxel_app apps/voxel_rt/main.cpp)
-target_link_libraries(voxel_app PRIVATE vrt)
+
+find_package(OpenMP REQUIRED)
+target_link_libraries(voxel_app PRIVATE vrt OpenMP::OpenMP_CXX)
