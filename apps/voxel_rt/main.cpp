@@ -94,96 +94,179 @@ struct ChildHit
 	AABB bounds;
 };
 
-RayHit trace_ray(const DagPoolManager& manager, const Ray& ray, std::uint32_t current_index, int depth, const AABB& bounds)
+RayHit trace_ray(const DagPoolManager& manager, const Ray& ray, std::uint32_t current_index, int depth, Vec3f center)
 {
-    RayHit bounds_hit = bounds.intersect(ray);
-    if (bounds_hit.t == float_inf || current_index == EMPTY)
+    // parent bounds test
+    float t_enter = 0.0f;
+    float t_exit = std::numeric_limits<float>::infinity();
+
+    for (int i = 0; i < 3; ++i)
     {
-        return { float_inf };
+        float t1 = (center[i] - (1 << (depth)) - ray.origin[i]) * ray.direction_inverse[i];
+        float t2 = (center[i] + (1 << (depth)) - ray.origin[i]) * ray.direction_inverse[i];
+
+        t_enter = std::max(t_enter, std::min(t1, t2));
+        t_exit = std::min(t_exit, std::max(t1, t2));
     }
-    Vec3 size = bounds.max - bounds.min;
-    Vec3 half_size = size / 2;
 
-    Vec3 right = { half_size.x, 0, 0 };
-    Vec3 up    = { 0, half_size.y, 0 };
-    Vec3 back  = { 0, 0, half_size.z };
-
-    AABB child_bounds[8] = {
-        { bounds.min, bounds.max - back - up - right },
-        { bounds.min + right, bounds.max - back - up },
-        { bounds.min + up, bounds.max - back - right },
-        { bounds.min + right + up, bounds.max - back },
-        { bounds.min + back, bounds.max - right - up },
-        { bounds.min + back + right, bounds.max - up },
-        { bounds.min + up + back, bounds.max - right },
-        { bounds.min + back + right + up, bounds.max }
-    };
-
-    if (depth > 0)
-    {
-        const Node& n = manager.dagPool().nodes[current_index];
-        ChildHit hits[8];
-        int hit_count = 0;
-
-        for (int i = 0; i < 8; i++)
-        {
-            if (n.indices[i] == EMPTY) continue;
-
-            RayHit hit = child_bounds[i].intersect(ray);
-            if (hit.t != float_inf)
-            {
-                hits[hit_count++] = { n.indices[i], hit.t, child_bounds[i] };
-            }
-        }
-
-        
-        std::sort(hits, hits + hit_count, [](const ChildHit& a, const ChildHit& b)
-            {
-                return a.t_min < b.t_min;
-            });
-
-        
-        for (int i = 0; i < hit_count; ++i)
-        {
-            RayHit result = trace_ray(manager, ray, hits[i].index, depth - 1, hits[i].bounds);
-
-            if (result.t != float_inf)
-            {
-                return result;
-            }
-        }
-    }
+    if(t_exit < std::max(t_enter, 0.0f))
+        return { .t = INFINITY };
     
-    else
+
+    Vec3 p = ray.origin + ray.direction * t_enter;
+
+    bool x_bit = p.x >= center.x;
+    bool y_bit = p.y >= center.y;
+    bool z_bit = p.z >= center.z;
+
+    std::uint8_t oct_idx = x_bit | (y_bit << 1) | (z_bit << 2);
+
+    Vec3f t_plane = (center - ray.origin) * ray.direction_inverse;
+
+    float txm = t_plane.x > t_enter ? t_plane.x : INFINITY;
+    float tym = t_plane.y > t_enter ? t_plane.y : INFINITY;
+    float tzm = t_plane.z > t_enter ? t_plane.z : INFINITY;
+
+    for (int i = 0; i < 4; i++)
     {
-        const Leaf& l = manager.dagPool().leaves[current_index];
-        ChildHit hits[8];
-        int hit_count = 0;
-
-        for (int i = 0; i < 8; i++)
+        if (depth > 0)
         {
-            if (l.voxels[i] == 0) continue;
-
-            RayHit hit = child_bounds[i].intersect(ray);
-            if (hit.t != float_inf)
+            if (manager.dagPool().nodes[current_index].indices[oct_idx] != EMPTY)
             {
-                hits[hit_count++] = { l.voxels[i], hit.t, child_bounds[i]};
+                float o = (1 << depth) / 2.0f;
+                Vec3f offset = {
+                    x_bit ? o : -o,
+                    y_bit ? o : -o,
+                    z_bit ? o : -o,
+                };
+
+                RayHit result = trace_ray(
+                    manager,
+                    ray,
+                    manager.dagPool().nodes[current_index].indices[oct_idx],
+                    depth - 1,
+                    center + offset
+                );
+
+                if (result.t != INFINITY)
+                {
+                    return result;
+                }
+            }
+        }
+        else
+        {
+            if (manager.dagPool().leaves[current_index].voxels[oct_idx] != 0)
+            {
+                return { .t = t_enter };
             }
         }
 
-        if (hit_count > 0)
-        {
-            std::sort(hits, hits + hit_count, [](const ChildHit& a, const ChildHit& b)
-                {
-                    return a.t_min < b.t_min;
-                });
+        float t_next = std::min({ txm, tym, tzm });
 
-            return { hits[0].t_min };
-        }
+        if (t_next > t_exit || t_next == INFINITY)
+            break;
+
+        if      (t_next == txm) { oct_idx ^= 1; x_bit = !x_bit; txm = INFINITY; }
+        else if (t_next == tym) { oct_idx ^= 2; y_bit = !y_bit; tym = INFINITY; }
+        else                    { oct_idx ^= 4; z_bit = !z_bit; tzm = INFINITY; }
+
+        t_enter = t_next;
     }
 
-    return { float_inf };
+    return { .t = INFINITY };
 }
+
+//RayHit trace_ray_(const DagPoolManager& manager, const Ray& ray, std::uint32_t current_index, int depth, const AABB& bounds)
+//{
+//    RayHit bounds_hit = bounds.intersect(ray);
+//    if (bounds_hit.t == float_inf || current_index == EMPTY)
+//    {
+//        return { float_inf };
+//    }
+//    Vec3 size = bounds.max - bounds.min;
+//    Vec3 half_size = size / 2;
+//
+//    Vec3 right = { half_size.x, 0, 0 };
+//    Vec3 up    = { 0, half_size.y, 0 };
+//    Vec3 back  = { 0, 0, half_size.z };
+//
+//    AABB child_bounds[8] = {
+//        { bounds.min, bounds.max - back - up - right },
+//        { bounds.min + right, bounds.max - back - up },
+//        { bounds.min + up, bounds.max - back - right },
+//        { bounds.min + right + up, bounds.max - back },
+//        { bounds.min + back, bounds.max - right - up },
+//        { bounds.min + back + right, bounds.max - up },
+//        { bounds.min + up + back, bounds.max - right },
+//        { bounds.min + back + right + up, bounds.max }
+//    };
+//
+//    if (depth > 0)
+//    {
+//        const Node& n = manager.dagPool().nodes[current_index];
+//        ChildHit hits[8];
+//        int hit_count = 0;
+//
+//        for (int i = 0; i < 8; i++)
+//        {
+//            if (n.indices[i] == EMPTY) continue;
+//
+//            RayHit hit = child_bounds[i].intersect(ray);
+//            if (hit.t != float_inf)
+//            {
+//                hits[hit_count++] = { n.indices[i], hit.t, child_bounds[i] };
+//            }
+//        }
+//
+//        
+//        std::sort(hits, hits + hit_count, [](const ChildHit& a, const ChildHit& b)
+//            {
+//                return a.t_min < b.t_min;
+//            });
+//
+//        
+//        for (int i = 0; i < hit_count; ++i)
+//        {
+//            RayHit result = trace_ray(manager, ray, hits[i].index, depth - 1, hits[i].bounds);
+//
+//            if (result.t != float_inf)
+//            {
+//                return result;
+//            }
+//        }
+//    }
+//    
+//    else
+//    {
+//        const Leaf& l = manager.dagPool().leaves[current_index];
+//        ChildHit hits[8];
+//        int hit_count = 0;
+//
+//        for (int i = 0; i < 8; i++)
+//        {
+//            if (l.voxels[i] == 0) continue;
+//
+//            RayHit hit = child_bounds[i].intersect(ray);
+//            if (hit.t != float_inf)
+//            {
+//                hits[hit_count++] = { l.voxels[i], hit.t, child_bounds[i]};
+//            }
+//        }
+//
+//        if (hit_count > 0)
+//        {
+//            std::sort(hits, hits + hit_count, [](const ChildHit& a, const ChildHit& b)
+//                {
+//                    return a.t_min < b.t_min;
+//                });
+//
+//            return { hits[0].t_min };
+//        }
+//    }
+//
+//    return { float_inf };
+//}
 
 
 void processInput(const Window& window, Camera& camera, float dt)
@@ -230,6 +313,9 @@ int main()
     float last_frame_time = 0.0f;
     float delta_time = 0.0f;
 
+    float start_frame = glfwGetTime();
+    int frame_count = 0;
+
     while (!window.should_close())
     {
         current_frame_time = glfwGetTime();
@@ -254,29 +340,24 @@ int main()
             }
         }
 
-        //float highest_t = 0;
         for (int y = 0; y < resolution_height; ++y)
         {
             for (int x = 0; x < resolution_width; ++x)
             {
                 const Ray r{ camera.position(), vec_dir_buffer(x, y) , 1 / vec_dir_buffer(x, y) };
-                RayHit result = trace_ray(manager, r, root_idx, 6, chunk_volume);
-                //color_buffer(x, y) = result.t != float_inf ? Vec3f{ 1.0f - result.t / 100 } : Vec3f{ float_inf };
+                RayHit result = trace_ray(manager, r, root_idx, 6, {0});
                 color_buffer(x, y) = Vec3{ 1.0f - std::pow(result.t/64, 0.25f) };
-                //highest_t = result.t > highest_t && result.t != float_inf ? result.t : highest_t;
             }
         }
 
-        /*for (int y = 0; y < resolution_height; ++y)
-        {
-            for (int x = 0; x < resolution_width; ++x)
-            {
-                color_buffer(x, y) = Vec3f{ 1 } - (color_buffer(x, y) / highest_t);
-            }
-        }*/
-
         presenter.present(reinterpret_cast<const float*>(color_buffer.data()));
         window.swap_buffers();
+
+        frame_count++;
+        float time = (glfwGetTime() - start_frame) / frame_count;
+
+        window.set_window_title("fps/ms: " + std::to_string(1.0f / delta_time) + "/" + std::to_string(delta_time * 1000) +
+            "avg fps/ms: " + std::to_string(1.0f / time) + "/" + std::to_string(time  * 1000));
     }
 
 

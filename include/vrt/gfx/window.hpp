@@ -26,6 +26,8 @@ namespace vrt
 		int get_width() const noexcept { return width_; }
 		int get_height() const noexcept { return height_; }
 
+		void set_window_title(const std::string& title) noexcept;
+
 	private:
 		GLFWwindow* window_{ nullptr };
 		int width_;

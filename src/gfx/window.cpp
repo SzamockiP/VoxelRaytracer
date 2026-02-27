@@ -94,3 +94,8 @@ void vrt::Window::mouse_callback(GLFWwindow* window, double xpos, double ypos)
 	win->mouse_.last_x = static_cast<float>(xpos);
 	win->mouse_.last_y = static_cast<float>(ypos);
 }
+
+void vrt::Window::set_window_title(const std::string& title) noexcept
+{
+	glfwSetWindowTitle(window_, title.c_str());
+}
