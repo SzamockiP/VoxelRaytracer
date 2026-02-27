@@ -94,89 +94,178 @@ struct ChildHit
 	AABB bounds;
 };
 
-RayHit trace_ray(const DagPoolManager& manager, const Ray& ray, std::uint32_t current_index, int depth, Vec3f center)
+struct StackFrame
 {
-    // parent bounds test
+    std::uint32_t node_index;
+    float tx, ty, tz;
+    float t_exit;
+    std::uint8_t oct_idx;
+};
+
+RayHit trace_ray(const DagPoolManager& manager,
+    const Ray& ray,
+    std::uint32_t root_index,
+    int max_depth,
+    Vec3f root_center)
+{
+    constexpr float INF = std::numeric_limits<float>::infinity();
+
+    // mirror ray
+    Vec3f O = ray.origin;
+    Vec3f invD = ray.direction_inverse;
+    Vec3f C = root_center;
+    std::uint8_t a = 0; // axis inversion mask
+
+    if (invD.x < 0.0f) { O.x = -O.x; invD.x = -invD.x; C.x = -C.x; a |= 1; }
+    if (invD.y < 0.0f) { O.y = -O.y; invD.y = -invD.y; C.y = -C.y; a |= 2; }
+    if (invD.z < 0.0f) { O.z = -O.z; invD.z = -invD.z; C.z = -C.z; a |= 4; }
+
     float t_enter = 0.0f;
-    float t_exit = INFINITY;
-    float half = 1 << depth;
+    float t_exit = INF;
 
-    for (int i = 0; i < 3; ++i)
+    const float root_half = float(1u << max_depth);
+
+    // Root slab test
+    float t0x = (C.x - root_half - O.x) * invD.x;
+    float t1x = (C.x + root_half - O.x) * invD.x;
+    t_enter = std::max(t_enter, t0x);
+    t_exit = std::min(t_exit, t1x);
+
+    float t0y = (C.y - root_half - O.y) * invD.y;
+    float t1y = (C.y + root_half - O.y) * invD.y;
+    t_enter = std::max(t_enter, t0y);
+    t_exit = std::min(t_exit, t1y);
+
+    float t0z = (C.z - root_half - O.z) * invD.z;
+    float t1z = (C.z + root_half - O.z) * invD.z;
+    t_enter = std::max(t_enter, t0z);
+    t_exit = std::min(t_exit, t1z);
+
+    t_enter = std::max(t_enter, 0.0f);
+
+    if (t_exit < t_enter)
+        return { .t = INF };
+
+    StackFrame stack[32];
+    int sp = 0;
+
+    int depth = max_depth;
+    std::uint32_t current_index = root_index;
+
+    float half = root_half;
+
+    // center axis
+    float txm = (C.x - O.x) * invD.x;
+    float tym = (C.y - O.y) * invD.y;
+    float tzm = (C.z - O.z) * invD.z;
+
+    std::uint8_t oct_idx =
+        (std::uint8_t(txm <= t_enter) << 0) |
+        (std::uint8_t(tym <= t_enter) << 1) |
+        (std::uint8_t(tzm <= t_enter) << 2);
+
+    float tx = (txm > t_enter) ? txm : INF;
+    float ty = (tym > t_enter) ? tym : INF;
+    float tz = (tzm > t_enter) ? tzm : INF;
+
+    while (true)
     {
-        float t1 = (center[i] - half - ray.origin[i]) * ray.direction_inverse[i];
-        float t2 = (center[i] + half - ray.origin[i]) * ray.direction_inverse[i];
-
-        t_enter = std::max(t_enter, std::min(t1, t2));
-        t_exit = std::min(t_exit, std::max(t1, t2));
-    }
-
-    // miss?
-    if(t_exit < std::max(t_enter, 0.0f))
-        return { .t = INFINITY };
-    
-
-    Vec3 p = ray.origin + ray.direction * t_enter;
-
-    bool x_bit = p.x >= center.x;
-    bool y_bit = p.y >= center.y;
-    bool z_bit = p.z >= center.z;
-
-    std::uint8_t oct_idx = x_bit | (y_bit << 1) | (z_bit << 2);
-
-    Vec3f t_plane = (center - ray.origin) * ray.direction_inverse;
-
-    float txm = t_plane.x > t_enter ? t_plane.x : INFINITY;
-    float tym = t_plane.y > t_enter ? t_plane.y : INFINITY;
-    float tzm = t_plane.z > t_enter ? t_plane.z : INFINITY;
-
-    for (int i = 0; i < 4; i++)
-    {
+        // 1. PROCESS / DESCEND
         if (depth > 0)
         {
-            if (manager.dagPool().nodes[current_index].indices[oct_idx] != EMPTY)
+            const std::uint32_t child_index =
+                manager.dagPool().nodes[current_index].indices[oct_idx ^ a];
+
+            if (child_index != EMPTY)
             {
-                float o = half * 0.5f;
-                Vec3f offset = {
-                    x_bit ? o : -o,
-                    y_bit ? o : -o,
-                    z_bit ? o : -o,
-                };
+                // t_next = min(tx,ty,tz)
+                float t_next = tx;
+                if (ty < t_next) t_next = ty;
+                if (tz < t_next) t_next = tz;
 
-                RayHit result = trace_ray(
-                    manager,
-                    ray,
-                    manager.dagPool().nodes[current_index].indices[oct_idx],
-                    depth - 1,
-                    center + offset
-                );
+                const float child_t_exit = (t_exit < t_next) ? t_exit : t_next;
 
-                if (result.t != INFINITY)
-                {
-                    return result;
-                }
+                // push frame
+                stack[sp++] = { current_index, tx, ty, tz, t_exit, oct_idx };
+
+                // descent
+                half *= 0.5f;
+                const float offset = half;
+
+                txm += ((oct_idx & 1) ? +offset : -offset) * invD.x;
+                tym += ((oct_idx & 2) ? +offset : -offset) * invD.y;
+                tzm += ((oct_idx & 4) ? +offset : -offset) * invD.z;
+
+                current_index = child_index;
+                t_exit = child_t_exit;
+                --depth;
+
+                oct_idx =
+                    (std::uint8_t(txm <= t_enter) << 0) |
+                    (std::uint8_t(tym <= t_enter) << 1) |
+                    (std::uint8_t(tzm <= t_enter) << 2);
+
+                tx = (txm > t_enter) ? txm : INF;
+                ty = (tym > t_enter) ? tym : INF;
+                tz = (tzm > t_enter) ? tzm : INF;
+
+                continue;
             }
         }
         else
         {
-            if (manager.dagPool().leaves[current_index].voxels[oct_idx] != 0)
-            {
+            // leaf
+            if (manager.dagPool().leaves[current_index].voxels[oct_idx ^ a] != 0)
                 return { .t = t_enter };
-            }
         }
 
-        float t_next = std::min({ txm, tym, tzm });
+        // 3. ADVANCE / POP
+        while (true)
+        {
+            int axis = 0;
+            float t_next = tx;
+            if (ty < t_next) { t_next = ty; axis = 1; }
+            if (tz < t_next) { t_next = tz; axis = 2; }
 
-        if (t_next > t_exit || t_next == INFINITY)
+            // POP 
+            if (t_next > t_exit)
+            {
+                if (sp == 0)
+                    return { .t = INF };
+
+                // ascend
+                ++depth;
+
+                const float offset = half;
+
+                // pop frame
+                const StackFrame& frame = stack[--sp];
+
+                current_index = frame.node_index;
+                tx = frame.tx;
+                ty = frame.ty;
+                tz = frame.tz;
+                t_exit = frame.t_exit;
+                oct_idx = frame.oct_idx;
+
+                txm -= ((oct_idx & 1) ? +offset : -offset) * invD.x;
+                tym -= ((oct_idx & 2) ? +offset : -offset) * invD.y;
+                tzm -= ((oct_idx & 4) ? +offset : -offset) * invD.z;
+
+                half *= 2.0f;
+
+                continue;
+            }
+
+            oct_idx |= std::uint8_t(1u << axis);
+            if (axis == 0) tx = INF;
+            else if (axis == 1) ty = INF;
+            else                tz = INF;
+
+            t_enter = t_next;
             break;
-
-        if      (t_next == txm) { oct_idx ^= 1; x_bit = !x_bit; txm = INFINITY; }
-        else if (t_next == tym) { oct_idx ^= 2; y_bit = !y_bit; tym = INFINITY; }
-        else                    { oct_idx ^= 4; z_bit = !z_bit; tzm = INFINITY; }
-
-        t_enter = t_next;
+        }
     }
-
-    return { .t = INFINITY };
 }
 
 void processInput(const Window& window, Camera& camera, float dt)
