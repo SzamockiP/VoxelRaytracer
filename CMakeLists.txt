@@ -47,5 +47,6 @@ endif()
 
 add_executable(voxel_app apps/voxel_rt/main.cpp)
 
-find_package(OpenMP REQUIRED)
-target_link_libraries(voxel_app PRIVATE vrt OpenMP::OpenMP_CXX)
+# find_package(OpenMP REQUIRED) 
+# target_link_libraries(voxel_app PRIVATE vrt OpenMP::OpenMP_CXX)
+target_link_libraries(voxel_app PRIVATE vrt)

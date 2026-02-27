@@ -239,7 +239,7 @@ int main()
 
         camera.ProcessMouseMovement(dx, dy);
 
-        #pragma omp parallel for schedule(dynamic, 1)
+        //#pragma omp parallel for schedule(dynamic, 1)
         for (int y = 0; y < resolution_height; ++y)
         {
             for (int x = 0; x < resolution_width; ++x)
