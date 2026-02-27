@@ -340,7 +340,7 @@ int main()
                 Ray r{ camera.position(), d, 1.0f / d };
 
                 RayHit result = trace_ray(manager, r, root_idx, 6, { 0 });
-                color_buffer(x, y) = Vec3{ 1.0f - std::pow(result.t / 64, 0.25f) };
+                color_buffer(x, y) = Vec3{ 1.0f - std::pow(result.t / 256, 0.25f) };
             }
         }
 

@@ -37,6 +37,8 @@ vrt::Window::Window(int width, int height, const std::string& title):
 	glfwSetCursorPosCallback(window_, mouse_callback);
 
 	glfwSetInputMode(window_, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+	glfwSwapInterval(0);
 }
 
 vrt::Window::~Window()
