@@ -41,9 +41,9 @@ std::uint32_t shape_torus(const Vec3f& pos)
     return distance <= minor_radius ? 1 : 0;
 }
 
-static std::uint32_t shape(const Vec3f& pos)
+static Voxel shape(const Vec3f& pos)
 {
-    return shape_gyroid(pos);
+    return shape_gyroid(pos) == 1 ? Voxel::FULL : Voxel::EMPTY;
 }
 
 std::uint32_t build_tree(DagPoolManager& manager, Vec3i min, Vec3i max)
@@ -144,7 +144,18 @@ RayHit trace_ray(const DagPoolManager& manager,
     t_enter = std::max(t_enter, 0.0f);
 
     if (t_exit < t_enter)
-        return { .t = INF };
+        return { .t = INF, .normal = {0}, .voxel = Voxel::EMPTY };
+
+    // Track the axis of the last ADVANCE step that set t_enter (0=X,1=Y,2=Z)
+    // Initialize from root slab entry (argmax of t0x/t0y/t0z).
+    std::uint8_t last_axis = 0;
+    {
+        float best = t0x;
+        last_axis = 0;
+        if (t0y > best) { best = t0y; last_axis = 1; }
+        if (t0z > best) { /*best = t0z;*/ last_axis = 2; }
+        // If we clamped t_enter to 0, last_axis is only a fallback; it will be overwritten on first ADVANCE.
+    }
 
     StackFrame stack[32];
     int sp = 0;
@@ -154,7 +165,7 @@ RayHit trace_ray(const DagPoolManager& manager,
 
     float half = root_half;
 
-    // center axis
+    // center axis (mid-planes of current node)
     float txm = (C.x - O.x) * invD.x;
     float tym = (C.y - O.y) * invD.y;
     float tzm = (C.z - O.z) * invD.z;
@@ -215,8 +226,24 @@ RayHit trace_ray(const DagPoolManager& manager,
         else
         {
             // leaf
-            if (manager.dagPool().leaves[current_index].voxels[oct_idx ^ a] != 0)
-                return { .t = t_enter };
+            Voxel v = manager.dagPool().leaves[current_index].voxels[oct_idx ^ a];
+            if (v != Voxel::EMPTY)
+            {
+                // Face normal from last ADVANCE axis (cheap and correct for your stepping)
+                Vec3f n{ 0.f, 0.f, 0.f };
+
+                // In mirrored space, direction is always +, so we always enter through the "negative" face.
+                if (last_axis == 0) n.x = -1.f;
+                else if (last_axis == 1) n.y = -1.f;
+                else                     n.z = -1.f;
+
+                // un-mirror back to world space
+                if (a & 1) n.x = -n.x;
+                if (a & 2) n.y = -n.y;
+                if (a & 4) n.z = -n.z;
+
+                return { .t = t_enter, .normal = n, .voxel = v };
+            }
         }
 
         // 3. ADVANCE / POP
@@ -227,11 +254,11 @@ RayHit trace_ray(const DagPoolManager& manager,
             if (ty < t_next) { t_next = ty; axis = 1; }
             if (tz < t_next) { t_next = tz; axis = 2; }
 
-            // POP 
+            // POP
             if (t_next > t_exit)
             {
                 if (sp == 0)
-                    return { .t = INF };
+                    return { .t = INF, .normal = {0}, .voxel = Voxel::EMPTY };
 
                 // ascend
                 ++depth;
@@ -257,12 +284,14 @@ RayHit trace_ray(const DagPoolManager& manager,
                 continue;
             }
 
+            // ADVANCE to next boundary
             oct_idx |= std::uint8_t(1u << axis);
             if (axis == 0) tx = INF;
             else if (axis == 1) ty = INF;
             else                tz = INF;
 
             t_enter = t_next;
+            last_axis = static_cast<std::uint8_t>(axis);
             break;
         }
     }
@@ -299,7 +328,7 @@ int main()
     Camera camera{
         static_cast<float>(resolution_width) / resolution_height,
         radians(120.f),
-        -90.f, 0, {64},
+        -90.f, 0, {0},
     };
 
     DagPoolManager manager{};
@@ -340,7 +369,9 @@ int main()
                 Ray r{ camera.position(), d, 1.0f / d };
 
                 RayHit result = trace_ray(manager, r, root_idx, 6, { 0 });
-                color_buffer(x, y) = Vec3{ 1.0f - std::pow(result.t / 256, 0.25f) };
+                float fade = std::clamp(1.0f - std::pow(result.t / 16, 0.25f), 0.0f, 1.0f);
+                float lightness = std::clamp(dot(result.normal, normalize(Vec3f{ 5,10,8 })), 0.f, 1.f);
+                color_buffer(x, y) = {  fade + lightness};
             }
         }
 

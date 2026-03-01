@@ -3,7 +3,7 @@
 
 namespace vrt
 {
-	enum class Voxel: std::uint8_t
+	enum class Voxel: std::uint32_t
 	{
 		EMPTY,
 		FULL
