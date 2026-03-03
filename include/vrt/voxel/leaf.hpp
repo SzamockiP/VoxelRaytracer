@@ -5,7 +5,7 @@ namespace vrt
 {
 	struct Leaf
 	{
-		std::uint32_t voxels[8];
+		Voxel voxels[8];
 
 		bool operator==(const Leaf& other) const noexcept
 		{
