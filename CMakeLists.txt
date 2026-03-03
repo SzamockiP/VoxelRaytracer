@@ -28,8 +28,11 @@ add_library(vrt STATIC
 	"src/io/ppm_writer.cpp"
 	"src/core/camera.cpp"
     "src/math/aabb.cpp" 
-	"src/voxel/dag_pool_manager.cpp"
- "src/gfx/window.cpp" "src/gfx/presenter.cpp" "src/voxel/intersector.cpp")
+	"src/accel/blas/blas_manager.cpp"
+	"src/gfx/window.cpp" 
+	"src/gfx/presenter.cpp" 
+	"src/rt/intersector.cpp"
+)
 
 target_include_directories(vrt PUBLIC include)
 

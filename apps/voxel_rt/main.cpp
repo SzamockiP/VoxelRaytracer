@@ -1,20 +1,23 @@
 #include <print>
+#include <cmath>
+#include <algorithm>
+#include <GLFW/glfw3.h>
+
 #include <vrt/core/camera.hpp>
+#include <vrt/core/buffer_2d.hpp>
+
 #include <vrt/math/ray.hpp>
 #include <vrt/math/vec3.hpp>
 #include <vrt/math/math.hpp>
-#include <vrt/io/ppm_writer.hpp>
-#include <vrt/core/buffer_2d.hpp>
 #include <vrt/math/aabb.hpp>
-#include <vrt/voxel/dag_pool_manager.hpp>
-#include <cassert>
-#include <vrt/core/ray_hit.hpp>
-#include <algorithm>
-#include <cmath>
+
+#include <vrt/accel/blas/blas_manager.hpp>
+
+#include <vrt/rt/hit.hpp>
+#include <vrt/rt/intersector.hpp>
+
 #include <vrt/gfx/window.hpp>
 #include <vrt/gfx/presenter.hpp>
-#include <GLFW/glfw3.h>
-#include <vrt/voxel/intersector.hpp>
 
 using namespace vrt;
 
@@ -47,7 +50,7 @@ static Voxel shape(const Vec3f& pos)
     return shape_gyroid(pos) == 1 ? Voxel::FULL : Voxel::EMPTY;
 }
 
-std::uint32_t build_tree(DagPoolManager& manager, Vec3i min, Vec3i max)
+std::uint32_t build_tree(BlasManager& manager, Vec3i min, Vec3i max)
 {
 	Vec3i size = max - min;
 	Vec3i half_size = size / 2;
@@ -122,7 +125,7 @@ int main()
         -90.f, 0, {0},
     };
 
-    DagPoolManager manager{};
+    BlasManager manager{};
     const AABB chunk_volume{ .min = {-64}, .max = {64} };
 
     Intersector intersector{ manager };
@@ -161,7 +164,7 @@ int main()
                 Vec3f d = normalize(camera.get_ray(u, v).direction);
                 Ray r{ camera.position(), d, 1.0f / d };
 
-                RayHit result = intersector.intersect(r, root_idx, 6, { 0 });
+                Hit result = intersector.intersect(r, root_idx, 6, { 0 });
                 float fade = std::clamp(1.0f - std::pow(result.t / 16, 0.25f), 0.0f, 1.0f);
                 float lightness = std::clamp(dot(result.normal, normalize(Vec3f{ 5,10,8 })), 0.f, 1.f);
                 color_buffer(x, y) = {  fade + lightness};

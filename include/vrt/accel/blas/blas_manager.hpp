@@ -1,24 +1,24 @@
 #pragma once
-#include <vrt/voxel/dag_pool.hpp>
+#include <vrt/accel/blas/blas.hpp>
+#include <vrt/accel/blas/node_hasher.hpp>
+#include <vrt/accel/blas/leaf_hasher.hpp>
 #include <unordered_map>
-#include <vrt/voxel/node_hasher.hpp>
-#include <vrt/voxel/leaf_hasher.hpp>
 #include <limits>
 
 
 namespace vrt
 {
 
-	class DagPoolManager
+	class BlasManager
 	{
 	public:
 		std::uint32_t AddNode(const Node& node);
 		std::uint32_t AddLeaf(const Leaf& leaf);
 		void RemoveNode(std::uint32_t index);
-		const DagPool& dagPool() const noexcept { return dag_pool_; }
+		const Blas& dagPool() const noexcept { return dag_pool_; }
 
 	private:
-		DagPool dag_pool_;
+		Blas dag_pool_;
 
 		std::unordered_map<Node, std::uint32_t, NodeHasher> node_indices;
 		std::vector<std::uint32_t> node_refcounts;

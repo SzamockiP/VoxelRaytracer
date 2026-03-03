@@ -1,4 +1,4 @@
-#include <vrt/voxel/intersector.hpp>
+#include <vrt/rt/intersector.hpp>
 
 struct StackFrame
 {
@@ -8,7 +8,7 @@ struct StackFrame
     std::uint8_t oct_idx;
 };
 
-const vrt::RayHit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root_index, std::uint32_t max_depth, const Vec3f& root_center) const noexcept
+const vrt::Hit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root_index, std::uint32_t max_depth, const Vec3f& root_center) const noexcept
 {
     constexpr float INF = std::numeric_limits<float>::infinity();
 
@@ -87,7 +87,7 @@ const vrt::RayHit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root
         if (depth > 0)
         {
             const std::uint32_t child_index =
-                dag_pool_manager_.dagPool().nodes[current_index].indices[oct_idx ^ a];
+                blas_manager_.dagPool().nodes[current_index].indices[oct_idx ^ a];
 
             if (child_index != EMPTY)
             {
@@ -128,7 +128,7 @@ const vrt::RayHit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root
         else
         {
             // leaf
-            Voxel v = dag_pool_manager_.dagPool().leaves[current_index].voxels[oct_idx ^ a];
+            Voxel v = blas_manager_.dagPool().leaves[current_index].voxels[oct_idx ^ a];
             if (v != Voxel::EMPTY)
             {
                 // Face normal from last ADVANCE axis (cheap and correct for your stepping)

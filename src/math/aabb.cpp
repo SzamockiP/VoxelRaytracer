@@ -1,7 +1,7 @@
 #include <vrt/math/aabb.hpp>
 #include <algorithm>
 
-vrt::RayHit vrt::AABB::intersect(const Ray& ray) const noexcept
+const vrt::Hit vrt::AABB::intersect(const Ray& ray) const noexcept
 {
 	float tmin = 0.0f;
 	float tmax = std::numeric_limits<float>::infinity();

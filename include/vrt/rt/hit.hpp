@@ -4,7 +4,7 @@
 
 namespace vrt
 {
-	struct RayHit
+	struct Hit
 	{
 		float t;
 		Vec3f normal;

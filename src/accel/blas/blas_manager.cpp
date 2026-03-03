@@ -1,7 +1,7 @@
-﻿#include <vrt/voxel/dag_pool_manager.hpp>
+﻿#include <vrt/accel/blas/blas_manager.hpp>
 #include <algorithm>
 
-std::uint32_t vrt::DagPoolManager::AddNode(const Node& node)
+std::uint32_t vrt::BlasManager::AddNode(const Node& node)
 {
 	// check if empty
 	if (std::ranges::all_of(node.indices, [](auto x) { return x == EMPTY; }))
@@ -39,7 +39,7 @@ std::uint32_t vrt::DagPoolManager::AddNode(const Node& node)
 	}
 }
 
-std::uint32_t vrt::DagPoolManager::AddLeaf(const Leaf& leaf)
+std::uint32_t vrt::BlasManager::AddLeaf(const Leaf& leaf)
 {
 	// check if empty
 	if (std::ranges::all_of(leaf.voxels, [](auto x) { return x == Voxel::EMPTY; }))
@@ -78,7 +78,7 @@ std::uint32_t vrt::DagPoolManager::AddLeaf(const Leaf& leaf)
 }
 
 
-void vrt::DagPoolManager::RemoveNode(std::uint32_t index)
+void vrt::BlasManager::RemoveNode(std::uint32_t index)
 {
 
 }

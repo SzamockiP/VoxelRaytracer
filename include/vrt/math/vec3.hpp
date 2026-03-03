@@ -4,7 +4,8 @@
 #include <cmath>
 
 
-namespace vrt {
+namespace vrt
+{
 
     template<typename T>
     concept Arithmetic = std::is_arithmetic_v<T>;
