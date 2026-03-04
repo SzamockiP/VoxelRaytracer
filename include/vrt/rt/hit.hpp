@@ -1,5 +1,6 @@
 #pragma once
-#include <vrt/math/vec3.hpp>
+#include <glm/glm.hpp>
+#include <vrt/core/types.hpp>
 #include <vrt/voxel/voxel.hpp>
 
 namespace vrt
@@ -7,7 +8,7 @@ namespace vrt
 	struct Hit
 	{
 		float t;
-		Vec3f normal;
+		glm::vec3 normal;
 		Voxel voxel;
 	};
 }

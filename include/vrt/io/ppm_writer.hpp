@@ -1,7 +1,8 @@
 #pragma once
 #include <string>
 #include <vrt/core/buffer_2d.hpp>
-#include <vrt/math/Vec3.hpp>
+#include <vrt/core/types.hpp>
+#include <glm/glm.hpp>
 
 namespace vrt
 {
@@ -9,7 +10,7 @@ namespace vrt
 class PpmWriter
 {
 public:
-	bool write(const std::string& file_path, const Buffer2D<Vec3f>& image_buffer) const;
+	bool write(const std::string& file_path, const Buffer2D<glm::vec3>& image_buffer) const;
 };
 
 }

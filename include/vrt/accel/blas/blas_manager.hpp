@@ -1,4 +1,5 @@
 #pragma once
+#include <vrt/core/types.hpp>
 #include <vrt/accel/blas/blas.hpp>
 #include <vrt/accel/blas/node_hasher.hpp>
 #include <vrt/accel/blas/leaf_hasher.hpp>
@@ -12,22 +13,22 @@ namespace vrt
 	class BlasManager
 	{
 	public:
-		std::uint32_t AddNode(const Node& node);
-		std::uint32_t AddLeaf(const Leaf& leaf);
-		void RemoveNode(std::uint32_t index);
+		u32 AddNode(const Node& node);
+		u32 AddLeaf(const Leaf& leaf);
+		void RemoveNode(u32 index);
 		const Blas& dagPool() const noexcept { return dag_pool_; }
 
 	private:
 		Blas dag_pool_;
 
-		std::unordered_map<Node, std::uint32_t, NodeHasher> node_indices;
-		std::vector<std::uint32_t> node_refcounts;
-		std::vector<std::uint32_t> free_node_indices_;
+		std::unordered_map<Node, u32, NodeHasher> node_indices;
+		std::vector<u32> node_refcounts;
+		std::vector<u32> free_node_indices_;
 
-		std::unordered_map<Leaf, std::uint32_t, LeafHasher> leaf_indices;
-		std::vector<std::uint32_t> leaf_refcounts;
-		std::vector<std::uint32_t> free_leaf_indices_;
+		std::unordered_map<Leaf, u32, LeafHasher> leaf_indices;
+		std::vector<u32> leaf_refcounts;
+		std::vector<u32> free_leaf_indices_;
 	};
 
-	const std::uint32_t EMPTY = std::numeric_limits<unsigned int>::max();
+	const u32 EMPTY = std::numeric_limits<unsigned int>::max();
 }

@@ -1,11 +1,12 @@
 #pragma once
-#include <vrt/math/vec3.hpp>
+#include <glm/glm.hpp>
+#include <vrt/core/types.hpp>
 
 namespace vrt
 {
 	struct Chunk
 	{
-		std::uint32_t root_index;
-		Vec3i position;
+		u32 root_index;
+		glm::ivec3 position;
 	};
 }

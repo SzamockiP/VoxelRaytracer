@@ -24,6 +24,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glad)
 
+# GLM
+FetchContent_Declare(
+    glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG        0.9.9.8
+)
+
 add_library(vrt STATIC
 	"src/io/ppm_writer.cpp"
 	"src/core/camera.cpp"
@@ -32,14 +39,14 @@ add_library(vrt STATIC
 	"src/gfx/window.cpp" 
 	"src/gfx/presenter.cpp" 
 	"src/rt/intersector.cpp"
-)
+ "src/accel/blas/blas_builder.cpp")
 
 target_include_directories(vrt PUBLIC include)
 
-target_link_libraries(vrt PUBLIC glfw glad)
-
 find_package(OpenGL REQUIRED)
-target_link_libraries(vrt PUBLIC OpenGL::GL)
+
+FetchContent_MakeAvailable(glm)
+target_link_libraries(vrt PUBLIC OpenGL::GL glfw glad glm::glm)
 
 
 if(MSVC)

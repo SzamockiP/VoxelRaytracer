@@ -1,7 +1,7 @@
 ﻿#include <vrt/accel/blas/blas_manager.hpp>
 #include <algorithm>
 
-std::uint32_t vrt::BlasManager::AddNode(const Node& node)
+vrt::u32 vrt::BlasManager::AddNode(const Node& node)
 {
 	// check if empty
 	if (std::ranges::all_of(node.indices, [](auto x) { return x == EMPTY; }))
@@ -20,7 +20,7 @@ std::uint32_t vrt::BlasManager::AddNode(const Node& node)
 	// does not exist
 	else
 	{
-		std::uint32_t idx;
+		u32 idx;
 		if (free_node_indices_.size() > 0)
 		{
 			idx = free_node_indices_.back();
@@ -39,7 +39,7 @@ std::uint32_t vrt::BlasManager::AddNode(const Node& node)
 	}
 }
 
-std::uint32_t vrt::BlasManager::AddLeaf(const Leaf& leaf)
+vrt::u32 vrt::BlasManager::AddLeaf(const Leaf& leaf)
 {
 	// check if empty
 	if (std::ranges::all_of(leaf.voxels, [](auto x) { return x == Voxel::EMPTY; }))
@@ -58,7 +58,7 @@ std::uint32_t vrt::BlasManager::AddLeaf(const Leaf& leaf)
 	// does not exist
 	else
 	{
-		std::uint32_t idx;
+		vrt::u32 idx;
 		if (free_leaf_indices_.size() > 0)
 		{
 			idx = free_leaf_indices_.back();

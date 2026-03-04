@@ -1,5 +1,6 @@
 #pragma once
-#include <vrt/math/vec3.hpp>
+#include <vrt/core/types.hpp>
+#include <glm/glm.hpp>
 #include <vrt/math/ray.hpp>
 #include <vrt/rt/hit.hpp>
 
@@ -7,8 +8,8 @@ namespace vrt
 {
 	struct AABB
 	{
-		Vec3f min;
-		Vec3f max;
+		glm::vec3 min;
+		glm::vec3 max;
 
 		const Hit intersect(const Ray& ray) const noexcept;
 	};

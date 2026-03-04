@@ -1,10 +1,11 @@
 #pragma once
+#include <vrt/core/types.hpp>
 
 namespace vrt
 {
 	struct Node
 	{
-		std::uint32_t indices[8];
+		u32 indices[8];
 
 		bool operator==(const Node& other) const noexcept
 		{
