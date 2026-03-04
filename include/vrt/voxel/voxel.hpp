@@ -1,9 +1,8 @@
 #pragma once
-#include <cstdint>
 
 namespace vrt
 {
-	enum class Voxel: std::uint32_t
+	enum class Voxel: u32
 	{
 		EMPTY,
 		FULL

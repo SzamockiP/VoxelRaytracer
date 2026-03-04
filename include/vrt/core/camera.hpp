@@ -1,5 +1,6 @@
 #pragma once
-#include <vrt/math/vec3.hpp>
+#include <vrt/core/types.hpp>
+#include <glm/glm.hpp>
 #include <vrt/math/ray.hpp>
 #include <vrt/core/direction.hpp>
 
@@ -22,25 +23,25 @@ namespace vrt
 		static constexpr float MAX_PITCH = 89.0f;
 
 		Camera(float aspect_ratio, float fov, float yaw = DEFAULT_YAW,
-			float pitch = DEFAULT_PITCH, Vec3f position = {0}, Vec3f world_up = Vec3f{ 0,1,0 });
+			float pitch = DEFAULT_PITCH, glm::vec3 position = glm::vec3{0}, glm::vec3 world_up = glm::vec3{ 0,1,0 });
 
 		void ProcessKeyboard(Direction direction, float deltaTime) noexcept;
 		void ProcessMouseMovement(float xoffset, float yoffset, bool constrainPitch = true) noexcept;
 
 
-		Vec3f position() const noexcept { return position_; }
-		Vec3f front() const noexcept { return front_; }
+		glm::vec3 position() const noexcept { return position_; }
+		glm::vec3 front() const noexcept { return front_; }
 		float aspect_ratio() const noexcept { return aspect_ratio_; }
 		float fov() const noexcept { return fov_; }
 
 		Ray get_ray(float u, float v) const noexcept;
 
 	private:
-		Vec3f position_;
-		Vec3f right_;
-		Vec3f up_;
-		Vec3f front_;
-		Vec3f world_up_;
+		glm::vec3 position_;
+		glm::vec3 right_;
+		glm::vec3 up_;
+		glm::vec3 front_;
+		glm::vec3 world_up_;
 
 		float yaw_;
 		float pitch_;

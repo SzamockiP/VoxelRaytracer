@@ -1,5 +1,5 @@
 #pragma once
-#include <vrt/math/vec3.hpp>
+#include <vrt/core/types.hpp>
 #include <numbers>
 
 

@@ -1,12 +1,14 @@
 #pragma once
-#include <vrt/math/vec3.hpp>
+#include <vrt/core/types.hpp>
+#include <glm/glm.hpp>
+
 
 namespace vrt
 {
 	struct Ray
 	{
-		Vec3f origin;
-		Vec3f direction;
-		Vec3f direction_inverse;
+		glm::vec3 origin;
+		glm::vec3 direction;
+		glm::vec3 direction_inverse;
 	};
 }

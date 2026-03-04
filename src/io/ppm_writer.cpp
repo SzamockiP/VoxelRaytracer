@@ -1,8 +1,8 @@
 #include <vrt/io/ppm_writer.hpp>
+#include <glm/glm.hpp>
 #include <fstream>
-#include <algorithm>
 
-bool vrt::PpmWriter::write(const std::string& file_path, const Buffer2D<Vec3f>& image_buffer) const
+bool vrt::PpmWriter::write(const std::string& file_path, const Buffer2D<glm::vec3>& image_buffer) const
 {
 	std::ofstream out(file_path, std::ios::binary);
 	if (!out) return false;
@@ -13,9 +13,9 @@ bool vrt::PpmWriter::write(const std::string& file_path, const Buffer2D<Vec3f>& 
 	{
 		const unsigned char rgb[3] = {
 
-			static_cast<unsigned char>(std::clamp(pixel.x * 255 + 0.5f , 0.f, 255.f)),
-			static_cast<unsigned char>(std::clamp(pixel.y * 255 + 0.5f, 0.f, 255.f)),
-			static_cast<unsigned char>(std::clamp(pixel.z * 255 + 0.5f, 0.f, 255.f))
+			static_cast<unsigned char>(glm::clamp(pixel.x * 255 + 0.5f , 0.f, 255.f)),
+			static_cast<unsigned char>(glm::clamp(pixel.y * 255 + 0.5f, 0.f, 255.f)),
+			static_cast<unsigned char>(glm::clamp(pixel.z * 255 + 0.5f, 0.f, 255.f))
 		};
 		out.write(reinterpret_cast<const char*>(rgb), 3);
 	}

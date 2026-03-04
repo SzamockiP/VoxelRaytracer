@@ -1,25 +1,20 @@
 #include <vrt/core/camera.hpp>
-#include <vrt/math/math.hpp>
-#include <vrt/math/vec3.hpp>
-#include <cmath>
-#include <cassert>
+#include <glm/glm.hpp>
 #include <algorithm>
 
 vrt::Camera::Camera(float aspect_ratio, float fov, float yaw,
-	float pitch, Vec3f position, Vec3f world_up) :
+	float pitch, glm::vec3 position, glm::vec3 world_up) :
 	aspect_ratio_(aspect_ratio), fov_(fov), yaw_(yaw), pitch_(pitch), position_(position), world_up_(world_up)
 {
-	assert(fov > 0 || fov < pi_f);
-	
 	UpdateVectors();
 
-	half_viewport_width_ = std::tanf(fov * 0.5f);
+	half_viewport_width_ = glm::tan(fov * 0.5f);
 	half_viewport_height_ = half_viewport_width_ / aspect_ratio_;
 };
 
 vrt::Ray vrt::Camera::get_ray(float u, float v) const noexcept
 {
-	Vec3f dir_world = {
+	glm::vec3 dir_world = {
 		normalize(
 			right_ * (u * half_viewport_width_) +
 			up_ * (v * half_viewport_height_) +
@@ -33,14 +28,14 @@ vrt::Ray vrt::Camera::get_ray(float u, float v) const noexcept
 
 void vrt::Camera::UpdateVectors() noexcept
 {
-	float yaw_rad = radians(yaw_);
-	float pitch_rad = radians(pitch_);
+	float yaw_rad = glm::radians(yaw_);
+	float pitch_rad = glm::radians(pitch_);
 
-	Vec3f front;
+	glm::vec3 front;
 
-	front.x = std::cos(yaw_rad) * std::cos(pitch_rad);
-	front.y = std::sin(pitch_rad);
-	front.z = std::sin(yaw_rad) * std::cos(pitch_rad);
+	front.x = glm::cos(yaw_rad) * glm::cos(pitch_rad);
+	front.y = glm::sin(pitch_rad);
+	front.z = glm::sin(yaw_rad) * glm::cos(pitch_rad);
 
 	front_	= normalize(front);
 	right_	= normalize(cross(front_, world_up_));

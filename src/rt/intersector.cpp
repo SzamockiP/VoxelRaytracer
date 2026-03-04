@@ -1,4 +1,5 @@
-#include <vrt/voxel/intersector.hpp>
+#include <vrt/rt/intersector.hpp>
+#include <glm/glm.hpp>
 
 struct StackFrame
 {
@@ -8,14 +9,14 @@ struct StackFrame
     std::uint8_t oct_idx;
 };
 
-const vrt::RayHit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root_index, std::uint32_t max_depth, const Vec3f& root_center) const noexcept
+const vrt::Hit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root_index, std::uint32_t max_depth, const glm::vec3& root_center) const noexcept
 {
     constexpr float INF = std::numeric_limits<float>::infinity();
 
     // mirror ray
-    Vec3f O = ray.origin;
-    Vec3f invD = ray.direction_inverse;
-    Vec3f C = root_center;
+    glm::vec3 O = ray.origin;
+    glm::vec3 invD = ray.direction_inverse;
+    glm::vec3 C = root_center;
     std::uint8_t a = 0; // axis inversion mask
 
     if (invD.x < 0.0f) { O.x = -O.x; invD.x = -invD.x; C.x = -C.x; a |= 1; }
@@ -46,7 +47,7 @@ const vrt::RayHit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root
     t_enter = std::max(t_enter, 0.0f);
 
     if (t_exit < t_enter)
-        return { .t = INF, .normal = {0}, .voxel = Voxel::EMPTY };
+        return { .t = INF, .normal = glm::vec3{0}, .voxel = Voxel::EMPTY };
 
     // Track the axis of the last ADVANCE step that set t_enter (0=X,1=Y,2=Z)
     // Initialize from root slab entry (argmax of t0x/t0y/t0z).
@@ -87,7 +88,7 @@ const vrt::RayHit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root
         if (depth > 0)
         {
             const std::uint32_t child_index =
-                dag_pool_manager_.dagPool().nodes[current_index].indices[oct_idx ^ a];
+                blas_manager_.dagPool().nodes[current_index].indices[oct_idx ^ a];
 
             if (child_index != EMPTY)
             {
@@ -128,11 +129,11 @@ const vrt::RayHit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root
         else
         {
             // leaf
-            Voxel v = dag_pool_manager_.dagPool().leaves[current_index].voxels[oct_idx ^ a];
+            Voxel v = blas_manager_.dagPool().leaves[current_index].voxels[oct_idx ^ a];
             if (v != Voxel::EMPTY)
             {
                 // Face normal from last ADVANCE axis (cheap and correct for your stepping)
-                Vec3f n{ 0.f, 0.f, 0.f };
+                glm::vec3 n{ 0.f, 0.f, 0.f };
 
                 // In mirrored space, direction is always +, so we always enter through the "negative" face.
                 if (last_axis == 0) n.x = -1.f;
@@ -160,7 +161,7 @@ const vrt::RayHit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root
             if (t_next > t_exit)
             {
                 if (sp == 0)
-                    return { .t = INF, .normal = {0}, .voxel = Voxel::EMPTY };
+                    return { .t = INF, .normal = glm::vec3{0}, .voxel = Voxel::EMPTY };
 
                 // ascend
                 ++depth;
