@@ -26,7 +26,7 @@ namespace vrt
 		u32 add_node(const Node& node);
 		u32 add_leaf(const Leaf& leaf);
 
-		u32 build(glm::vec3 center, u32 size);
+		u32 build(glm::vec3 center, u8 resolution);
 
 		const std::vector<Node>& nodes() const noexcept{
 			return nodes_;

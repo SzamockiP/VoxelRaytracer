@@ -7,8 +7,8 @@
 namespace vrt {
 
 	struct Instance {
-		u32 root_id;
-		u32 size;
+		u32 root_index;
+		u8 depth;
 		glm::mat4 transform;
 	};
 

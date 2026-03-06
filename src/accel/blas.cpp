@@ -32,10 +32,10 @@ static vrt::Voxel shape(const glm::vec3& pos)
 	return shape_gyroid(pos) == 1 ? vrt::Voxel::FULL : vrt::Voxel::EMPTY;
 }
 
-vrt::u32 vrt::Blas::build(glm::vec3 center, u32 size)
+vrt::u32 vrt::Blas::build(glm::vec3 center, u8 depth)
 {
 
-	if (size == 2)
+	if (depth == 1)
 	{
 		Leaf l{
 			shape(center + glm::vec3{ -0.5f, -0.5f, -0.5f }),
@@ -52,17 +52,17 @@ vrt::u32 vrt::Blas::build(glm::vec3 center, u32 size)
 	}
 	else
 	{
-		u32 half_size = size >> 1;
-		const float offset = static_cast<float>(size) * 0.25f;
+		depth--;
+		const float offset = static_cast<float>(1u << depth) * 0.5f;
 		Node n = {
-			build(center + glm::vec3{ -offset, -offset, -offset }, half_size),
-			build(center + glm::vec3{  offset, -offset, -offset }, half_size),
-			build(center + glm::vec3{ -offset,  offset, -offset }, half_size),
-			build(center + glm::vec3{  offset,  offset, -offset }, half_size),
-			build(center + glm::vec3{ -offset, -offset,  offset }, half_size),
-			build(center + glm::vec3{  offset, -offset,  offset }, half_size),
-			build(center + glm::vec3{ -offset,  offset,  offset }, half_size),
-			build(center + glm::vec3{  offset,  offset,  offset }, half_size)
+			build(center + glm::vec3{ -offset, -offset, -offset }, depth),
+			build(center + glm::vec3{  offset, -offset, -offset }, depth),
+			build(center + glm::vec3{ -offset,  offset, -offset }, depth),
+			build(center + glm::vec3{  offset,  offset, -offset }, depth),
+			build(center + glm::vec3{ -offset, -offset,  offset }, depth),
+			build(center + glm::vec3{  offset, -offset,  offset }, depth),
+			build(center + glm::vec3{ -offset,  offset,  offset }, depth),
+			build(center + glm::vec3{  offset,  offset,  offset }, depth)
 		};
 		return add_node(n);
 	}

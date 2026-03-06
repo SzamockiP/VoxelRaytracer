@@ -47,7 +47,7 @@ int main()
     const int window_height = 720;
 
     const int resolution_width = 192;
-    const int resolution_height = 144;
+    const int resolution_height = 108;
 
     Window window{ window_width, window_height, "voxel_rt" };
     Presenter presenter{ resolution_width, resolution_height };
@@ -61,11 +61,11 @@ int main()
 
     
     Scene scene{};
-    Intersector intersector{ scene.blas() };
-    u32 size{ 128 };
+    Intersector intersector{ scene };
+    u8 resolution{ 5 }; // 2**5 = 32
     glm::vec3 position{ 0.0f };
-    u32 root_idx = scene.blas().build(position, size);
-    scene.add_instance({ root_idx, size, glm::translate(glm::mat4(1.0f), position) });
+    u32 root_idx = scene.blas().build(position, resolution);
+    scene.add_instance({ root_idx, resolution, glm::translate(glm::mat4(1.0f), position) });
 
     float current_frame_time = 0.0f;
     float last_frame_time = 0.0f;
@@ -101,7 +101,7 @@ int main()
                 Hit result = { .t = INFINITY };
                 for (const auto& instance : scene.instances()) 
                 {
-                    Hit temp = intersector.intersect(r, root_idx, 6, glm::vec3{ 0 });
+                    Hit temp = intersector.intersect(r, instance);
                     if (temp.t < result.t) {
                         result = temp;
                     }
