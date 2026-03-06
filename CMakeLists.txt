@@ -35,11 +35,11 @@ add_library(vrt STATIC
 	"src/io/ppm_writer.cpp"
 	"src/core/camera.cpp"
     "src/math/aabb.cpp" 
-	"src/accel/blas/blas_manager.cpp"
+	
 	"src/gfx/window.cpp" 
 	"src/gfx/presenter.cpp" 
 	"src/rt/intersector.cpp"
- "src/accel/blas/blas_builder.cpp")
+  "src/accel/blas/blas.cpp")
 
 target_include_directories(vrt PUBLIC include)
 
