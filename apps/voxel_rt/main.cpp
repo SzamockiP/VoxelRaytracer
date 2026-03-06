@@ -12,8 +12,7 @@
 #include <vrt/math/math.hpp>
 #include <vrt/math/aabb.hpp>
 
-#include <vrt/accel/blas/blas_manager.hpp>
-#include <vrt/accel/blas/blas_builder.hpp>
+#include <vrt/accel/blas.hpp>
 
 #include <vrt/rt/hit.hpp>
 #include <vrt/rt/intersector.hpp>
@@ -58,11 +57,10 @@ int main()
         -90.f, 0, glm::vec3{0},
     };
 
-    BlasManager manager{};
-    BlasBuilder builder{manager};
-    Intersector intersector{ manager };
+    Blas blas{};
+    Intersector intersector{ blas };
 
-    u32 root_idx = builder.BuildTree(glm::vec3{ 0 }, 128);
+    u32 root_idx = blas.Build(glm::vec3{ 0 }, 128);
 
 
     float current_frame_time = 0.0f;
