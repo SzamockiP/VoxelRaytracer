@@ -1,22 +1,15 @@
 #pragma once
 #include <vrt/voxel/voxel.hpp>
 #include <vrt/core/types.hpp>
+#include <array>
 
 namespace vrt
 {
 	struct Leaf
 	{
-		Voxel voxels[8];
+		std::array<Voxel, 8> voxels;
 
-		bool operator==(const Leaf& other) const noexcept
-		{
-			for (int i = 0; i < 8; i++)
-			{
-				if (voxels[i] != other.voxels[i])
-					return false;
-			}
-			return true;
-		}
+		bool operator==(const Leaf&) const noexcept = default;
 	};
 }
 
@@ -26,9 +19,9 @@ struct std::hash<vrt::Leaf>
 	std::size_t operator()(const vrt::Leaf& leaf) const noexcept
 	{
 		std::size_t hash = 0;
-		for (int i = 0; i < 8; i++)
+		for (auto voxel : leaf.voxels)
 		{
-			std::size_t h = std::hash<vrt::u32>{}(static_cast<vrt::u32>(leaf.voxels[i]));
+			std::size_t h = std::hash<vrt::u32>{}(static_cast<vrt::u32>(voxel));
 			hash ^= h + 0x9e3779b9 + (hash << 6) + (hash >> 2);
 		}
 		return hash;

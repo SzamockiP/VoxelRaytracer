@@ -1,4 +1,5 @@
 #include <vrt/accel/blas/blas.hpp>
+#include <vrt/voxel/voxel.hpp>
 #include <glm/glm.hpp>
 #include <algorithm>
 
