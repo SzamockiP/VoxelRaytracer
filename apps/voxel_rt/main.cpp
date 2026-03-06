@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include <vrt/core/camera.hpp>
 #include <vrt/core/buffer_2d.hpp>
 #include <vrt/core/types.hpp>
+#include <vrt/core/scene.hpp>
 
 #include <vrt/math/ray.hpp>
 #include <vrt/math/math.hpp>
@@ -26,17 +28,17 @@ using namespace vrt;
 void processInput(const Window& window, Camera& camera, float dt)
 {
     if (window.is_key_pressed(GLFW_KEY_W))
-        camera.ProcessKeyboard(Direction::Forward, dt);
+        camera.process_keyboard(Direction::Forward, dt);
     if (window.is_key_pressed(GLFW_KEY_S))
-        camera.ProcessKeyboard(Direction::Backward, dt);
+        camera.process_keyboard(Direction::Backward, dt);
     if (window.is_key_pressed(GLFW_KEY_A))
-        camera.ProcessKeyboard(Direction::Left, dt);
+        camera.process_keyboard(Direction::Left, dt);
     if (window.is_key_pressed(GLFW_KEY_D))
-        camera.ProcessKeyboard(Direction::Right, dt);
+        camera.process_keyboard(Direction::Right, dt);
     if (window.is_key_pressed(GLFW_KEY_E))
-        camera.ProcessKeyboard(Direction::Up, dt);
+        camera.process_keyboard(Direction::Up, dt);
     if (window.is_key_pressed(GLFW_KEY_Q))
-        camera.ProcessKeyboard(Direction::Down, dt);
+        camera.process_keyboard(Direction::Down, dt);
 }
 
 int main()
@@ -57,11 +59,13 @@ int main()
         -90.f, 0, glm::vec3{0},
     };
 
-    Blas blas{};
-    Intersector intersector{ blas };
-
-    u32 root_idx = blas.Build(glm::vec3{ 0 }, 128);
-
+    
+    Scene scene{};
+    Intersector intersector{ scene.blas() };
+    u32 size{ 128 };
+    glm::vec3 position{ 0.0f };
+    u32 root_idx = scene.blas().build(position, size);
+    scene.add_instance({ root_idx, size, glm::translate(glm::mat4(1.0f), position) });
 
     float current_frame_time = 0.0f;
     float last_frame_time = 0.0f;
@@ -82,7 +86,7 @@ int main()
         window.get_mouse_delta(dx, dy);
         processInput(window, camera, delta_time);
 
-        camera.ProcessMouseMovement(dx, dy);
+        camera.process_mouse_movement(dx, dy);
 
         //#pragma omp parallel for schedule(dynamic, 1)
         for (int y = 0; y < resolution_height; ++y)
@@ -94,8 +98,15 @@ int main()
 
                 glm::vec3 d = normalize(camera.get_ray(u, v).direction);
                 Ray r{ camera.position(), d, 1.0f / d };
+                Hit result = { .t = INFINITY };
+                for (const auto& instance : scene.instances()) 
+                {
+                    Hit temp = intersector.intersect(r, root_idx, 6, glm::vec3{ 0 });
+                    if (temp.t < result.t) {
+                        result = temp;
+                    }
+                }
 
-                Hit result = intersector.intersect(r, root_idx, 6, glm::vec3{ 0 });
                 float fade = std::clamp(1.0f - std::pow(result.t / 16, 0.25f), 0.0f, 1.0f);
                 float lightness = std::clamp(dot(result.normal, normalize(glm::vec3{ 5,10,8 })), 0.f, 1.f);
                 color_buffer(x, y) = glm::vec3{ fade + lightness };

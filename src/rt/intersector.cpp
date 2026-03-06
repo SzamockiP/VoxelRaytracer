@@ -88,7 +88,7 @@ const vrt::Hit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root_in
         if (depth > 0)
         {
             const std::uint32_t child_index =
-                blas_.Nodes()[current_index].indices[oct_idx ^ a];
+                blas_.nodes()[current_index].indices[oct_idx ^ a];
 
             if (child_index != EMPTY)
             {
@@ -129,7 +129,7 @@ const vrt::Hit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root_in
         else
         {
             // leaf
-            Voxel v = blas_.Leaves()[current_index].voxels[oct_idx ^ a];
+            Voxel v = blas_.leaves()[current_index].voxels[oct_idx ^ a];
             if (v != Voxel::EMPTY)
             {
                 // Face normal from last ADVANCE axis (cheap and correct for your stepping)

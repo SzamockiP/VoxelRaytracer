@@ -32,7 +32,7 @@ static vrt::Voxel shape(const glm::vec3& pos)
 	return shape_gyroid(pos) == 1 ? vrt::Voxel::FULL : vrt::Voxel::EMPTY;
 }
 
-vrt::u32 vrt::Blas::Build(glm::vec3 center, u32 size)
+vrt::u32 vrt::Blas::build(glm::vec3 center, u32 size)
 {
 
 	if (size == 2)
@@ -48,27 +48,27 @@ vrt::u32 vrt::Blas::Build(glm::vec3 center, u32 size)
 			shape(center + glm::vec3{  0.5f,  0.5f,  0.5f })
 		};
 
-		return AddLeaf(l);
+		return add_leaf(l);
 	}
 	else
 	{
 		u32 half_size = size >> 1;
 		const float offset = static_cast<float>(size) * 0.25f;
 		Node n = {
-			Build(center + glm::vec3{ -offset, -offset, -offset }, half_size),
-			Build(center + glm::vec3{  offset, -offset, -offset }, half_size),
-			Build(center + glm::vec3{ -offset,  offset, -offset }, half_size),
-			Build(center + glm::vec3{  offset,  offset, -offset }, half_size),
-			Build(center + glm::vec3{ -offset, -offset,  offset }, half_size),
-			Build(center + glm::vec3{  offset, -offset,  offset }, half_size),
-			Build(center + glm::vec3{ -offset,  offset,  offset }, half_size),
-			Build(center + glm::vec3{  offset,  offset,  offset }, half_size)
+			build(center + glm::vec3{ -offset, -offset, -offset }, half_size),
+			build(center + glm::vec3{  offset, -offset, -offset }, half_size),
+			build(center + glm::vec3{ -offset,  offset, -offset }, half_size),
+			build(center + glm::vec3{  offset,  offset, -offset }, half_size),
+			build(center + glm::vec3{ -offset, -offset,  offset }, half_size),
+			build(center + glm::vec3{  offset, -offset,  offset }, half_size),
+			build(center + glm::vec3{ -offset,  offset,  offset }, half_size),
+			build(center + glm::vec3{  offset,  offset,  offset }, half_size)
 		};
-		return AddNode(n);
+		return add_node(n);
 	}
 }
 
-vrt::u32 vrt::Blas::AddNode(const Node& node)
+vrt::u32 vrt::Blas::add_node(const Node& node)
 {
 	// check if empty
 	if (std::ranges::all_of(node.indices, [](auto x) { return x == EMPTY; }))
@@ -106,7 +106,7 @@ vrt::u32 vrt::Blas::AddNode(const Node& node)
 	}
 }
 
-vrt::u32 vrt::Blas::AddLeaf(const Leaf& leaf)
+vrt::u32 vrt::Blas::add_leaf(const Leaf& leaf)
 {
 	// check if empty
 	if (std::ranges::all_of(leaf.voxels, [](auto x) { return x == Voxel::EMPTY; }))
