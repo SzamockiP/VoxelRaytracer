@@ -1,4 +1,4 @@
-#include <vrt/accel/blas/blas.hpp>
+#include <vrt/accel/blas.hpp>
 #include <vrt/voxel/voxel.hpp>
 #include <glm/glm.hpp>
 #include <algorithm>
@@ -142,4 +142,26 @@ vrt::u32 vrt::Blas::AddLeaf(const Leaf& leaf)
 		leaf_indices_[leaf] = idx;
 		return idx;
 	}
+}
+
+std::size_t vrt::Blas::NodeHasher::operator()(const Node& node) const noexcept
+{
+	std::size_t hash = 0;
+	for (auto index : node.indices)
+	{
+		std::size_t h = std::hash<vrt::u32>{}(index);
+		hash ^= h + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+	}
+	return hash;
+}
+
+std::size_t vrt::Blas::LeafHasher::operator()(const Leaf& leaf) const noexcept
+{
+	std::size_t hash = 0;
+	for (auto voxel : leaf.voxels)
+	{
+		std::size_t h = std::hash<vrt::u32>{}(static_cast<vrt::u32>(voxel));
+		hash ^= h + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+	}
+	return hash;
 }

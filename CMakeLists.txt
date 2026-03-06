@@ -39,7 +39,7 @@ add_library(vrt STATIC
 	"src/gfx/window.cpp" 
 	"src/gfx/presenter.cpp" 
 	"src/rt/intersector.cpp"
-  "src/accel/blas/blas.cpp")
+  "src/accel/blas.cpp")
 
 target_include_directories(vrt PUBLIC include)
 

@@ -12,7 +12,7 @@
 #include <vrt/math/math.hpp>
 #include <vrt/math/aabb.hpp>
 
-#include <vrt/accel/blas/blas.hpp>
+#include <vrt/accel/blas.hpp>
 
 #include <vrt/rt/hit.hpp>
 #include <vrt/rt/intersector.hpp>
