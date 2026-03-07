@@ -66,7 +66,8 @@ int main()
     glm::vec3 position{ 0.0f };
     u32 root_idx = scene.blas().build(position, depth);
     scene.add_instance({ root_idx, depth, glm::translate(glm::mat4(1.0f), position) });
-    scene.print_debug();
+    //scene.print_debug();
+    scene.tlas().build(scene.instances());
 
     float current_frame_time = 0.0f;
     float last_frame_time = 0.0f;
