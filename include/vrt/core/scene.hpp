@@ -25,6 +25,11 @@ namespace vrt {
 			return instances_;
 		}
 
+		void print_debug() 
+		{
+			blas_.print_debug();
+		};
+
 	private:
 		Blas blas_;
 		std::vector<Instance> instances_;

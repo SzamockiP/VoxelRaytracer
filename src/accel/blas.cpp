@@ -17,8 +17,8 @@ static vrt::u32 shape_gyroid(const glm::vec3& pos)
 
 static vrt::u32 shape_torus(const glm::vec3& pos)
 {
-	const float major_radius = 8.0f;
-	const float minor_radius = 4.0f;
+	const float major_radius = 50.0f;
+	const float minor_radius = 30.0f;
 
 	float q = std::sqrt(pos.x * pos.x + pos.z * pos.z) - major_radius;
 
@@ -29,7 +29,7 @@ static vrt::u32 shape_torus(const glm::vec3& pos)
 
 static vrt::Voxel shape(const glm::vec3& pos)
 {
-	return shape_gyroid(pos) == 1 ? vrt::Voxel::FULL : vrt::Voxel::EMPTY;
+	return shape_torus(pos) == 1 ? vrt::Voxel::FULL : vrt::Voxel::EMPTY;
 }
 
 vrt::u32 vrt::Blas::build(glm::vec3 center, u8 depth)

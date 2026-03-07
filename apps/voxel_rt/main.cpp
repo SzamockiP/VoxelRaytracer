@@ -62,10 +62,11 @@ int main()
     
     Scene scene{};
     Intersector intersector{ scene };
-    u8 resolution{ 5 }; // 2**5 = 32
+    u8 depth{ 7 }; // 2**5 = 32
     glm::vec3 position{ 0.0f };
-    u32 root_idx = scene.blas().build(position, resolution);
-    scene.add_instance({ root_idx, resolution, glm::translate(glm::mat4(1.0f), position) });
+    u32 root_idx = scene.blas().build(position, depth);
+    scene.add_instance({ root_idx, depth, glm::translate(glm::mat4(1.0f), position) });
+    scene.print_debug();
 
     float current_frame_time = 0.0f;
     float last_frame_time = 0.0f;

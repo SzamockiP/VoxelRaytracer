@@ -5,6 +5,7 @@
 #include <vrt/core/types.hpp>
 #include <array>
 #include <vrt/voxel/voxel.hpp>
+#include <print>
 
 namespace vrt
 {	
@@ -36,6 +37,12 @@ namespace vrt
 			return leaves_;
 		}
 
+		void print_debug() {
+			std::println("unique leaves: {}", leaves_.size());
+			std::println("unique nodes:  {}", nodes_.size());
+			std::println("leaf map size: {}", leaf_indices_.size());
+			std::println("node map size: {}", node_indices_.size());
+		}
 	private:
 		struct NodeHasher
 		{
