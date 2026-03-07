@@ -17,8 +17,8 @@ static vrt::u32 shape_gyroid(const glm::vec3& pos)
 
 static vrt::u32 shape_torus(const glm::vec3& pos)
 {
-	const float major_radius = 8.0f;
-	const float minor_radius = 4.0f;
+	const float major_radius = 50.0f;
+	const float minor_radius = 30.0f;
 
 	float q = std::sqrt(pos.x * pos.x + pos.z * pos.z) - major_radius;
 
@@ -29,13 +29,13 @@ static vrt::u32 shape_torus(const glm::vec3& pos)
 
 static vrt::Voxel shape(const glm::vec3& pos)
 {
-	return shape_gyroid(pos) == 1 ? vrt::Voxel::FULL : vrt::Voxel::EMPTY;
+	return shape_torus(pos) == 1 ? vrt::Voxel::FULL : vrt::Voxel::EMPTY;
 }
 
-vrt::u32 vrt::Blas::Build(glm::vec3 center, u32 size)
+vrt::u32 vrt::Blas::build(glm::vec3 center, u8 depth)
 {
 
-	if (size == 2)
+	if (depth == 1)
 	{
 		Leaf l{
 			shape(center + glm::vec3{ -0.5f, -0.5f, -0.5f }),
@@ -48,27 +48,27 @@ vrt::u32 vrt::Blas::Build(glm::vec3 center, u32 size)
 			shape(center + glm::vec3{  0.5f,  0.5f,  0.5f })
 		};
 
-		return AddLeaf(l);
+		return add_leaf(l);
 	}
 	else
 	{
-		u32 half_size = size >> 1;
-		const float offset = static_cast<float>(size) * 0.25f;
+		depth--;
+		const float offset = static_cast<float>(1u << depth) * 0.5f;
 		Node n = {
-			Build(center + glm::vec3{ -offset, -offset, -offset }, half_size),
-			Build(center + glm::vec3{  offset, -offset, -offset }, half_size),
-			Build(center + glm::vec3{ -offset,  offset, -offset }, half_size),
-			Build(center + glm::vec3{  offset,  offset, -offset }, half_size),
-			Build(center + glm::vec3{ -offset, -offset,  offset }, half_size),
-			Build(center + glm::vec3{  offset, -offset,  offset }, half_size),
-			Build(center + glm::vec3{ -offset,  offset,  offset }, half_size),
-			Build(center + glm::vec3{  offset,  offset,  offset }, half_size)
+			build(center + glm::vec3{ -offset, -offset, -offset }, depth),
+			build(center + glm::vec3{  offset, -offset, -offset }, depth),
+			build(center + glm::vec3{ -offset,  offset, -offset }, depth),
+			build(center + glm::vec3{  offset,  offset, -offset }, depth),
+			build(center + glm::vec3{ -offset, -offset,  offset }, depth),
+			build(center + glm::vec3{  offset, -offset,  offset }, depth),
+			build(center + glm::vec3{ -offset,  offset,  offset }, depth),
+			build(center + glm::vec3{  offset,  offset,  offset }, depth)
 		};
-		return AddNode(n);
+		return add_node(n);
 	}
 }
 
-vrt::u32 vrt::Blas::AddNode(const Node& node)
+vrt::u32 vrt::Blas::add_node(const Node& node)
 {
 	// check if empty
 	if (std::ranges::all_of(node.indices, [](auto x) { return x == EMPTY; }))
@@ -106,7 +106,7 @@ vrt::u32 vrt::Blas::AddNode(const Node& node)
 	}
 }
 
-vrt::u32 vrt::Blas::AddLeaf(const Leaf& leaf)
+vrt::u32 vrt::Blas::add_leaf(const Leaf& leaf)
 {
 	// check if empty
 	if (std::ranges::all_of(leaf.voxels, [](auto x) { return x == Voxel::EMPTY; }))

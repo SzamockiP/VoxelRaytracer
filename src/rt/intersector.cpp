@@ -9,14 +9,15 @@ struct StackFrame
     std::uint8_t oct_idx;
 };
 
-const vrt::Hit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root_index, std::uint32_t max_depth, const glm::vec3& root_center) const noexcept
+//const vrt::Hit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root_index, std::uint32_t max_depth, const glm::vec3& root_center) const noexcept
+const vrt::Hit vrt::Intersector::intersect(const Ray& ray, const Instance& instance) const noexcept
 {
     constexpr float INF = std::numeric_limits<float>::infinity();
 
     // mirror ray
     glm::vec3 O = ray.origin;
     glm::vec3 invD = ray.direction_inverse;
-    glm::vec3 C = root_center;
+    glm::vec3 C = instance.transform[3];
     std::uint8_t a = 0; // axis inversion mask
 
     if (invD.x < 0.0f) { O.x = -O.x; invD.x = -invD.x; C.x = -C.x; a |= 1; }
@@ -26,7 +27,7 @@ const vrt::Hit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root_in
     float t_enter = 0.0f;
     float t_exit = INF;
 
-    const float root_half = float(1u << max_depth);
+    const float root_half = static_cast<float>(1u << (instance.depth - 1));
 
     // Root slab test
     float t0x = (C.x - root_half - O.x) * invD.x;
@@ -63,8 +64,8 @@ const vrt::Hit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root_in
     StackFrame stack[32];
     int sp = 0;
 
-    int depth = max_depth;
-    std::uint32_t current_index = root_index;
+    int depth = instance.depth;
+    std::uint32_t current_index = instance.root_index;
 
     float half = root_half;
 
@@ -85,10 +86,10 @@ const vrt::Hit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root_in
     while (true)
     {
         // 1. PROCESS / DESCEND
-        if (depth > 0)
+        if (depth > 1)
         {
             const std::uint32_t child_index =
-                blas_.Nodes()[current_index].indices[oct_idx ^ a];
+                scene_.blas().nodes()[current_index].indices[oct_idx ^ a];
 
             if (child_index != EMPTY)
             {
@@ -129,7 +130,7 @@ const vrt::Hit vrt::Intersector::intersect(const Ray& ray, std::uint32_t root_in
         else
         {
             // leaf
-            Voxel v = blas_.Leaves()[current_index].voxels[oct_idx ^ a];
+            Voxel v = scene_.blas().leaves()[current_index].voxels[oct_idx ^ a];
             if (v != Voxel::EMPTY)
             {
                 // Face normal from last ADVANCE axis (cheap and correct for your stepping)

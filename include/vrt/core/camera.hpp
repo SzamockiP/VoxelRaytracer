@@ -25,8 +25,8 @@ namespace vrt
 		Camera(float aspect_ratio, float fov, float yaw = DEFAULT_YAW,
 			float pitch = DEFAULT_PITCH, glm::vec3 position = glm::vec3{0}, glm::vec3 world_up = glm::vec3{ 0,1,0 });
 
-		void ProcessKeyboard(Direction direction, float deltaTime) noexcept;
-		void ProcessMouseMovement(float xoffset, float yoffset, bool constrainPitch = true) noexcept;
+		void process_keyboard(Direction direction, float deltaTime) noexcept;
+		void process_mouse_movement(float xoffset, float yoffset, bool constrainPitch = true) noexcept;
 
 
 		glm::vec3 position() const noexcept { return position_; }
@@ -54,6 +54,6 @@ namespace vrt
 		float half_viewport_width_;
 		float half_viewport_height_;
 
-		void UpdateVectors() noexcept;
+		void update_vectors() noexcept;
 	};
 }

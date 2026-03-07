@@ -6,7 +6,7 @@ vrt::Camera::Camera(float aspect_ratio, float fov, float yaw,
 	float pitch, glm::vec3 position, glm::vec3 world_up) :
 	aspect_ratio_(aspect_ratio), fov_(fov), yaw_(yaw), pitch_(pitch), position_(position), world_up_(world_up)
 {
-	UpdateVectors();
+	update_vectors();
 
 	half_viewport_width_ = glm::tan(fov * 0.5f);
 	half_viewport_height_ = half_viewport_width_ / aspect_ratio_;
@@ -26,7 +26,7 @@ vrt::Ray vrt::Camera::get_ray(float u, float v) const noexcept
 
 }
 
-void vrt::Camera::UpdateVectors() noexcept
+void vrt::Camera::update_vectors() noexcept
 {
 	float yaw_rad = glm::radians(yaw_);
 	float pitch_rad = glm::radians(pitch_);
@@ -42,7 +42,7 @@ void vrt::Camera::UpdateVectors() noexcept
 	up_		= normalize(cross(right_, front_));
 }
 
-void vrt::Camera::ProcessKeyboard(Direction direction, float deltaTime) noexcept
+void vrt::Camera::process_keyboard(Direction direction, float deltaTime) noexcept
 {
 	float velocity = movement_speed_ * deltaTime;
 	switch (direction)
@@ -56,7 +56,7 @@ void vrt::Camera::ProcessKeyboard(Direction direction, float deltaTime) noexcept
 	}
 }
 
-void vrt::Camera::ProcessMouseMovement(float xoffset, float yoffset, bool constrainPitch) noexcept
+void vrt::Camera::process_mouse_movement(float xoffset, float yoffset, bool constrainPitch) noexcept
 {
 	xoffset *= mouse_sensitivity_;
 	yoffset *= mouse_sensitivity_;
@@ -69,5 +69,5 @@ void vrt::Camera::ProcessMouseMovement(float xoffset, float yoffset, bool constr
 		pitch_ = std::clamp(pitch_, MIN_PITCH, MAX_PITCH);
 	}
 
-	UpdateVectors();
+	update_vectors();
 }
