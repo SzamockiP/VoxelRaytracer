@@ -1,8 +1,14 @@
 #include <vrt/accel/tlas.hpp>
+#include <algorithm>
 
 void vrt::Tlas::build(const std::vector<Instance>& instances) 
 {
 	compute_morton_entries(instances);
+
+	std::ranges::sort(morton_entries_, [](const MortonEntry& a, const MortonEntry& b) 
+	{
+		return a.code < b.code;
+	});
 }
 
 void vrt::Tlas::compute_morton_entries(const std::vector<Instance>& instances)
