@@ -41,17 +41,6 @@ void processInput(const Window& window, Camera& camera, float dt)
         camera.process_keyboard(Direction::Down, dt);
 }
 
-//int main()
-//{
-//    vrt::Dag dag;
-//    std::println("\nBuilding DAG");
-//
-//    auto root = dag.build(7, glm::vec3(0.0f));
-//    dag.root_index_ = root.value().index;
-//
-//    return 0;
-//}
-
 int main()
 {
     const int window_width = 1280;
