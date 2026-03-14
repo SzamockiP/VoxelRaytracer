@@ -1,4 +1,4 @@
-#include <print>
+﻿#include <print>
 #include <cmath>
 #include <algorithm>
 #include <GLFW/glfw3.h>
@@ -46,8 +46,10 @@ int main()
     const int window_width = 1280;
     const int window_height = 720;
 
-    const int resolution_width = 192;
-    const int resolution_height = 108;
+    //const int resolution_width = 192;
+    //const int resolution_height = 108;
+    const int resolution_width = 320;
+    const int resolution_height = 180;
 
     Window window{ window_width, window_height, "voxel_rt" };
     Presenter presenter{ resolution_width, resolution_height };
@@ -86,7 +88,7 @@ int main()
 
         camera.process_mouse_movement(dx, dy);
 
-        //#pragma omp parallel for schedule(dynamic, 1)
+        #pragma omp parallel for schedule(dynamic, 1)
         for (int y = 0; y < resolution_height; ++y)
         {
             for (int x = 0; x < resolution_width; ++x)
@@ -98,10 +100,34 @@ int main()
                 Ray r{ camera.position(), d, 1.0f / d };
                 Dag::Hit result = dag.intersect(r, 7, root.value());
 
-                float fade = std::clamp(1.0f - std::pow(result.t / 100, 0.25f), 0.0f, 1.0f);
-                float lightness = std::clamp(dot(result.normal, normalize(glm::vec3{ 5,10,8 })), 0.f, 1.f);
-                color_buffer(x, y) = glm::vec3{ fade + lightness };
-                //color_buffer(x, y) = glm::vec3{ result.voxel.r,result.voxel.g,result.voxel.b };
+                // Jeśli promień uciekł w pustkę (nie trafił w nic)
+                if (result.t == std::numeric_limits<float>::infinity())
+                {
+                    // Rysujemy tło (np. ciemnoszare / lekko niebieskie)
+                    color_buffer(x, y) = glm::vec3{ 0.1f, 0.1f, 0.15f };
+                }
+                else
+                {
+                    // 1. ODKODOWANIE KOLORU z unii Voxel (u8 na floaty 0.0-1.0)
+                    glm::vec3 base_color{
+                        result.voxel.r / 255.0f,
+                        result.voxel.g / 255.0f,
+                        result.voxel.b / 255.0f
+                    };
+
+                    // 2. OŚWIETLENIE (tylko słońce i ambient, zero mgły)
+                    glm::vec3 light_dir = normalize(glm::vec3{ 5.0f, 10.0f, 8.0f });
+
+                    // Obliczamy jak bardzo normalna jest odwrócona do światła (0.0 to cień, 1.0 to pełne słońce)
+                    float diffuse = std::max(dot(result.normal, light_dir), 0.0f);
+
+                    // Ambient - żeby w cieniu cokolwiek było widać (zmień na 0.0f, jeśli chcesz absolutny mrok w cieniu)
+                    float ambient = 0.15f;
+                    float lightness = std::clamp(diffuse + ambient, 0.0f, 1.0f);
+
+                    // 3. KOMPOZYCJA
+                    color_buffer(x, y) = base_color * lightness;
+                }
             }
         }
 

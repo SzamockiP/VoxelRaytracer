@@ -289,12 +289,6 @@ static vrt::u32 shape_terrain(const glm::vec3& pos)
     return pos.y <= surface_height ? 1 : 0;
 }
 
-static vrt::u32 shape_solid_sphere(const glm::vec3& pos)
-{
-    const float radius = 80.0f;
-    return glm::length(pos) <= radius ? 1 : 0;
-}
-
 static vrt::u32 shape_gyroid(const glm::vec3& pos)
 {
     glm::vec3 p = pos * 0.5f;
@@ -307,9 +301,33 @@ static vrt::u32 shape_gyroid(const glm::vec3& pos)
     return (val > -0.3f && val < 0.3f) ? 1 : 0;
 }
 
+static vrt::u32 shape_solid_sphere(const glm::vec3& pos)
+{
+    const float radius = 80.0f;
+    return glm::length(pos) <= radius ? 1 : 0;
+}
+
 static std::optional<vrt::Dag::Voxel> get_voxel(glm::vec3 pos)
 {
-    if (shape_solid_sphere(pos) == 1) return vrt::Dag::Voxel{ .rgbe = 0xFFFFFF00 };
+    if (shape_gyroid(pos) == 1)
+    {
+        // 1. Zabezpieczenie przed (0,0,0), żeby normalize() nie zwróciło NaN
+        glm::vec3 n = (pos == glm::vec3(0.0f)) ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::normalize(pos);
+
+        // 2. Mapowanie wektora z zakresu [-1.0, 1.0] na kolory [0, 255]
+        vrt::u8 r = static_cast<vrt::u8>((n.x + 1.0f) * 0.5f * 255.0f);
+        vrt::u8 b = static_cast<vrt::u8>((n.y + 1.0f) * 0.5f * 255.0f); // Oś Y jako niebieski (Twoje życzenie)
+        vrt::u8 g = static_cast<vrt::u8>((n.z + 1.0f) * 0.5f * 255.0f); // Oś Z jako zielony (Twoje życzenie)
+
+        // 3. Wpisujemy do unii z wykorzystaniem struktury RGBE
+        vrt::Dag::Voxel v;
+        v.r = r;
+        v.g = g;
+        v.b = b;
+        v.e = 0; // Kanał dodatkowy/Alpha ustawiamy na 0
+
+        return v;
+    }
     return std::nullopt;
 }
 
