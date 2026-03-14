@@ -377,7 +377,7 @@ std::optional<vrt::Dag::Node> vrt::Dag::build(u8 depth, const glm::vec3& center)
 
 struct StackFrame
 {
-    vrt::u32 node_index;
+    vrt::Dag::Node node;
     float tx, ty, tz;
     float t_exit;
     vrt::u8 oct_idx;
@@ -432,7 +432,7 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
     StackFrame stack[32];
     int sp = 0;
 
-    std::uint32_t current_index = root.index;
+    Node current_node = root;
 
     float half = root_half;
 
@@ -451,9 +451,6 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
 
     while (true)
     {
-        // POBIERAMY AKTUALNY WĘZEŁ
-        Node current_node = nodes_[current_index];
-
         // 0. EARLY RAY TERMINATION (Lity, ucięty sześcian na wyższym poziomie)
         if (current_node.is_leaf())
         {
@@ -489,7 +486,7 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
                 const float child_t_exit = (t_exit < t_next) ? t_exit : t_next;
 
                 // Odkładamy ojca na stos
-                stack[sp++] = { current_index, tx, ty, tz, t_exit, oct_idx };
+                stack[sp++] = { current_node, tx, ty, tz, t_exit, oct_idx };
 
                 half *= 0.5f;
                 const float offset_pos = half;
@@ -498,7 +495,7 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
                 tym += ((oct_idx & 2) ? +offset_pos : -offset_pos) * invD.y;
                 tzm += ((oct_idx & 4) ? +offset_pos : -offset_pos) * invD.z;
 
-                current_index = child_index;
+                current_node = nodes_[child_index];
                 t_exit = child_t_exit;
                 --depth;
 
@@ -549,7 +546,7 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
                 const float offset_pos = half;
 
                 const StackFrame& frame = stack[--sp];
-                current_index = frame.node_index;
+                current_node = frame.node;
                 tx = frame.tx;
                 ty = frame.ty;
                 tz = frame.tz;

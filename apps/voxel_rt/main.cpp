@@ -67,7 +67,7 @@ int main()
     Camera camera{
         static_cast<float>(resolution_width) / resolution_height,
         radians(120.f),
-        -90.f, 0, glm::vec3{0},
+        -90.f, 0, glm::vec3{80},
     };
 
     
