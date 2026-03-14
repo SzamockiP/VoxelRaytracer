@@ -37,12 +37,17 @@ namespace vrt
 			return leaves_;
 		}
 
-		void print_debug() {
-			std::println("unique leaves: {}", leaves_.size());
-			std::println("unique nodes:  {}", nodes_.size());
-			std::println("leaf map size: {}", leaf_indices_.size());
-			std::println("node map size: {}", node_indices_.size());
+		void debug() {
+			std::println("=== BLAS debug ===");
+
+			std::size_t node_bytes = (nodes_.size() * sizeof(Node));
+			std::size_t leaf_bytes = (leaves_.size() * sizeof(Leaf));
+			std::println("Nodes:   {:<10} | {:>10} B", nodes_.size(), node_bytes);
+			std::println("Voxels:  {:<10} | {:>10} B", leaves_.size(), leaf_bytes);
+
+			std::println("Used memory for nodes and voxels {} MB", (node_bytes + leaf_bytes) / 1024.0f / 1024.0f);
 		}
+
 	private:
 		struct NodeHasher
 		{

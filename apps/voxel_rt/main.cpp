@@ -21,7 +21,7 @@
 
 #include <vrt/gfx/window.hpp>
 #include <vrt/gfx/presenter.hpp>
-
+#include <vrt/accel/dag.hpp>
 
 using namespace vrt;
 
@@ -40,6 +40,17 @@ void processInput(const Window& window, Camera& camera, float dt)
     if (window.is_key_pressed(GLFW_KEY_Q))
         camera.process_keyboard(Direction::Down, dt);
 }
+
+//int main()
+//{
+//    vrt::Dag dag;
+//    std::println("\nBuilding DAG");
+//
+//    auto root = dag.build(7, glm::vec3(0.0f));
+//    dag.root_index_ = root.value().index;
+//
+//    return 0;
+//}
 
 int main()
 {
@@ -60,13 +71,10 @@ int main()
     };
 
     
-    Scene scene{};
-    Intersector intersector{ scene };
-    u8 depth{ 7 }; // 2**5 = 32
-    glm::vec3 position{ 0.0f };
-    u32 root_idx = scene.blas().build(position, depth);
-    scene.add_instance({ root_idx, depth, glm::translate(glm::mat4(1.0f), position) });
-    scene.print_debug();
+    vrt::Dag dag;
+    std::println("\nBuilding DAG");
+    const auto root = dag.build(7, glm::vec3(0.0f));
+    dag.debug();
 
     float current_frame_time = 0.0f;
     float last_frame_time = 0.0f;
@@ -99,18 +107,12 @@ int main()
 
                 glm::vec3 d = normalize(camera.get_ray(u, v).direction);
                 Ray r{ camera.position(), d, 1.0f / d };
-                Hit result = { .t = INFINITY };
-                for (const auto& instance : scene.instances()) 
-                {
-                    Hit temp = intersector.intersect(r, instance);
-                    if (temp.t < result.t) {
-                        result = temp;
-                    }
-                }
+                Dag::Hit result = dag.intersect(r, 7, root.value());
 
-                float fade = std::clamp(1.0f - std::pow(result.t / 16, 0.25f), 0.0f, 1.0f);
+                float fade = std::clamp(1.0f - std::pow(result.t / 100, 0.25f), 0.0f, 1.0f);
                 float lightness = std::clamp(dot(result.normal, normalize(glm::vec3{ 5,10,8 })), 0.f, 1.f);
                 color_buffer(x, y) = glm::vec3{ fade + lightness };
+                //color_buffer(x, y) = glm::vec3{ result.voxel.r,result.voxel.g,result.voxel.b };
             }
         }
 

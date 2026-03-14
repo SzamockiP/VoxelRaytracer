@@ -6,6 +6,8 @@
 #include <array>
 #include <span>
 #include <optional>
+#include <print>
+#include <vrt/math/ray.hpp>
 
 namespace vrt
 {
@@ -46,13 +48,37 @@ namespace vrt
             {
                 return raw == other.raw;
             }
+
+            const bool is_leaf() const { return index & (1u << 31); }
         };
+
+        struct Hit
+        {
+            float t;
+            glm::vec3 normal;
+            Voxel voxel;
+        };
+
+        const std::vector<Node>& nodes() { return nodes_; }
+        const std::vector<Voxel>& leaves() { return leaves_; }
 
         Node add_node(const std::array<Node, 8>& node, u8 mask);
         Node add_leaf(const std::array<Voxel, 8>& leaf, u8 mask);
 
         std::optional<Node> build(u8 depth, const glm::vec3& center);
 
+        Hit intersect(const Ray& ray, u8 depth, const Node& root) const noexcept;
+
+        void debug()
+        {
+            std::size_t node_bytes = (nodes_.size() * sizeof(Node));
+            std::size_t leaf_bytes = (leaves_.size() * sizeof(Voxel));
+            std::println("=== DAG debug ====");
+            std::println("Nodes:   {:<10} | {:>10} B", nodes_.size(), node_bytes);
+            std::println("Voxels:  {:<10} | {:>10} B", leaves_.size(), leaf_bytes);
+
+            std::println("Used memory for nodes and voxels {} MB", (node_bytes + leaf_bytes) / 1024.0f / 1024.0f);
+        }
     private:
         std::vector<Node>  nodes_;
         std::vector<Voxel> leaves_;

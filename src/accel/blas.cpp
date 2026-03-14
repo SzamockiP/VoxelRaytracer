@@ -27,9 +27,22 @@ static vrt::u32 shape_torus(const glm::vec3& pos)
 	return distance <= minor_radius ? 1 : 0;
 }
 
+static vrt::u32 shape_solid_sphere(const glm::vec3& pos)
+{
+	const float radius = 80.0f;
+	return glm::length(pos) <= radius ? 1 : 0;
+}
+
+static vrt::u32 shape_terrain(const glm::vec3& pos)
+{
+	float surface_height = std::sin(pos.x * 0.05f) * std::cos(pos.z * 0.05f) * 20.0f;
+
+	return pos.y <= surface_height ? 1 : 0;
+}
+
 static vrt::Voxel shape(const glm::vec3& pos)
 {
-	return shape_torus(pos) == 1 ? vrt::Voxel::FULL : vrt::Voxel::EMPTY;
+	return shape_solid_sphere(pos) == 1 ? vrt::Voxel::FULL : vrt::Voxel::EMPTY;
 }
 
 vrt::u32 vrt::Blas::build(glm::vec3 center, u8 depth)
