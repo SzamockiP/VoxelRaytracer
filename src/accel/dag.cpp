@@ -331,7 +331,7 @@ static std::optional<vrt::Dag::Voxel> get_voxel(glm::vec3 pos)
     return std::nullopt;
 }
 
-std::optional<vrt::Dag::Node> vrt::Dag::build(u8 depth, const glm::vec3& center)
+std::optional<vrt::Dag::Node> vrt::Dag::build(u8 depth, const glm::vec3& center, const std::function<std::optional<Voxel>(glm::vec3)>& sampler)
 {
     u32 half_size = 1u << depth;
     float offset = half_size * 0.5f;
@@ -356,8 +356,8 @@ std::optional<vrt::Dag::Node> vrt::Dag::build(u8 depth, const glm::vec3& center)
         {
             glm::vec3 pos = center + offsets[i];
 
-            // custom shape function
-            std::optional<Voxel> opt_voxel = get_voxel(pos);
+            // TUTAJ ZMIANA: Używamy wstrzykniętej funkcji zamiast sztywnego get_voxel()
+            std::optional<Voxel> opt_voxel = sampler(pos);
 
             if (opt_voxel.has_value())
             {
@@ -378,7 +378,8 @@ std::optional<vrt::Dag::Node> vrt::Dag::build(u8 depth, const glm::vec3& center)
         {
             glm::vec3 pos = center + offsets[i];
 
-            std::optional<Node> opt_child = build(depth - 1, pos);
+            // TUTAJ ZMIANA: Przekazujemy sampler oczko niżej do kolejnego wywołania rekurencyjnego!
+            std::optional<Node> opt_child = build(depth - 1, pos, sampler);
 
             if (opt_child.has_value())
             {
@@ -391,7 +392,7 @@ std::optional<vrt::Dag::Node> vrt::Dag::build(u8 depth, const glm::vec3& center)
 
         return add_node(children, mask);
     }
-};
+}
 
 struct StackFrame
 {
