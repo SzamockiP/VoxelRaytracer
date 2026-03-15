@@ -25,9 +25,9 @@ namespace vrt {
 			return instances_;
 		}
 
-		void print_debug() 
+		void debug() 
 		{
-			blas_.print_debug();
+			blas_.debug();
 		};
 
 	private:
