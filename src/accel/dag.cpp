@@ -1,6 +1,8 @@
 #include <vrt/accel/dag.hpp>
 #include <algorithm>
 #include <stdexcept>
+#include <fstream>
+#include <bit>
 
 // return index to the first object of the sequence
 vrt::Dag::Node vrt::Dag::add_node(const std::array<Node, 8>& node, u8 mask)
@@ -593,3 +595,118 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
     }
 }
 
+
+template <typename T>
+struct TempNode
+{
+    vrt::u8 mask;
+    std::vector<T> elements;
+
+    TempNode()
+    {
+        mask = 0;
+        elements.reserve(8);
+    }
+
+    void add(vrt::u8 octant, const T& element)
+    {
+        mask |= (1 << octant);
+        elements.push_back(element);
+    }
+
+    void clear()
+    {
+        mask = 0;
+        elements.clear();
+    }
+
+    bool is_empty() const
+    {
+        return mask == 0;
+    }
+};
+
+
+vrt::Dag::Node vrt::Dag::build(u8 depth, const glm::vec3& center, const std::filesystem::path& filepath)
+{
+    if (!std::filesystem::exists(filepath))
+    {
+        throw std::runtime_error("Error: vrt::Dag::build filepath doesn't exist.");
+    }
+
+    std::ifstream file(filepath, std::ios::binary);
+
+    std::vector<TempNode<Node>> temp_nodes(depth);
+    TempNode<Voxel> temp_leaf;
+
+    struct VoxelData
+    {
+        u64 morton;
+        Voxel voxel;
+    } voxel_data;
+
+    auto calculate_divergence = [](u64 morton_a, u64 morton_b) -> int
+        {
+            u64 diff = morton_a ^ morton_b;
+            if (diff == 0) return 0;
+            return (63 - std::countl_zero(diff)) / 3;
+        };
+
+
+    auto insert_leaf = [&](TempNode<Voxel>& leaves) -> Node
+        {
+            return Node{};
+        };
+
+    auto insert_node = [&](TempNode<Node>& nodes) -> Node
+        {
+            return Node{};
+        };
+
+    // get first voxel, may be empty so return empty root
+    if (!file.read(reinterpret_cast<char*>(&voxel_data), sizeof(VoxelData))) return Node{};
+
+    u64 last_morton = voxel_data.morton;
+    temp_leaf.add(last_morton & 0b111, voxel_data.voxel);
+
+    while (file.read(reinterpret_cast<char*>(&voxel_data), sizeof(VoxelData)))
+    {
+        // voxel in the same node
+        if ((last_morton >> 3) == (voxel_data.morton >> 3))
+        {
+            temp_leaf.add(voxel_data.morton & 0b111, voxel_data.voxel);
+        }
+        else
+        {
+            // fistly, make a node from leaves
+            Node node = insert_leaf(temp_leaf);
+            temp_leaf.clear();
+
+            // insert node into temp_node above
+            int current_level = 0;
+            temp_nodes[current_level].add((last_morton >> 3) & 0b111, node);
+
+            // calculate level of change
+            int max_level = calculate_divergence(last_morton, voxel_data.morton);
+
+            // insert nodes into final nodes 
+            while (current_level < max_level)
+            {
+                node = insert_node(temp_nodes[current_level]);
+                temp_nodes[current_level].clear();
+
+                ++current_level;
+
+                u8 parent_octant = (last_morton >> (3 * current_level + 1)) & 0b111;
+                temp_nodes[current_level].add(parent_octant, node);
+            }
+
+            temp_leaf.add(voxel_data.morton & 0b111, voxel_data.voxel);
+        }
+
+        last_morton = voxel_data.morton;
+    }
+
+    // TODO: flush rest of tree
+    return Node{};
+}
