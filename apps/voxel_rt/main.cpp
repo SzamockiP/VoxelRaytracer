@@ -39,6 +39,8 @@ void processInput(const Window& window, Camera& camera, float dt)
 
 int main()
 {
+    const int tree_depth = 10;
+
     const int window_width = 1280;
     const int window_height = 720;
 
@@ -58,13 +60,13 @@ int main()
     };
     VoxelModel my_model;
 
-    if (!my_model.load_obj("san-miguel-low-poly.obj", 1024))
+    if (!my_model.load_obj("san-miguel-low-poly.obj", 1u << tree_depth))
     {
         return -1;
     }
     
     vrt::Dag dag;
-    auto root = dag.build(10, glm::vec3(0.0f), [&my_model](glm::vec3 pos)
+    auto root = dag.build(tree_depth, glm::vec3(0.0f), [&my_model](glm::vec3 pos)
     {
         return my_model.sample(pos);
     });
@@ -110,7 +112,7 @@ int main()
 
                 glm::vec3 d = normalize(camera.get_ray(u, v).direction);
                 Ray r{ camera.position(), d, 1.0f / d };
-                Dag::Hit result = dag.intersect(r, 10, root.value());
+                Dag::Hit result = dag.intersect(r, tree_depth, root.value());
 
                 // Jeśli promień uciekł w pustkę (nie trafił w nic)
                 if (result.t == std::numeric_limits<float>::infinity())
