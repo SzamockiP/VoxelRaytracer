@@ -8,6 +8,7 @@
 #include <optional>
 #include <print>
 #include <vrt/math/ray.hpp>
+#include <functional>
 
 namespace vrt
 {
@@ -65,7 +66,7 @@ namespace vrt
         Node add_node(const std::array<Node, 8>& node, u8 mask);
         Node add_leaf(const std::array<Voxel, 8>& leaf, u8 mask);
 
-        std::optional<Node> build(u8 depth, const glm::vec3& center);
+        std::optional<Node> build(u8 depth, const glm::vec3& center, const std::function<std::optional<Voxel>(glm::vec3)>& sampler);
 
         Hit intersect(const Ray& ray, u8 depth, const Node& root) const noexcept;
 

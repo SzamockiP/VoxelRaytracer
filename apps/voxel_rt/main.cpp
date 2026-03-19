@@ -23,6 +23,9 @@
 #include <vrt/gfx/presenter.hpp>
 #include <vrt/accel/dag.hpp>
 
+#include <vrt/voxel/voxel_model.hpp>
+#include <iostream>
+
 using namespace vrt;
 
 void processInput(const Window& window, Camera& camera, float dt)
@@ -60,11 +63,27 @@ int main()
         radians(120.f),
         -90.f, 0, glm::vec3{80},
     };
+    VoxelModel my_model;
 
+    if (!my_model.load_obj("san-miguel-low-poly.obj", 1750))
+    {
+        return -1;
+    }
     
     vrt::Dag dag;
-    std::println("\nBuilding DAG");
-    const auto root = dag.build(7, glm::vec3(0.0f));
+    auto root = dag.build(10, glm::vec3(0.0f), [&my_model](glm::vec3 pos)
+    {
+        return my_model.sample(pos);
+    });
+
+    if (!root.has_value())
+    {
+        std::cerr << "Blad: DAG jest pusty!\n";
+        return -1;
+    }
+
+    my_model.grid.clear();
+    my_model.grid.shrink_to_fit();
     dag.debug();
 
     float current_frame_time = 0.0f;
@@ -88,7 +107,7 @@ int main()
 
         camera.process_mouse_movement(dx, dy);
 
-        #pragma omp parallel for schedule(dynamic, 1)
+        //#pragma omp parallel for schedule(dynamic, 1)
         for (int y = 0; y < resolution_height; ++y)
         {
             for (int x = 0; x < resolution_width; ++x)
@@ -98,7 +117,7 @@ int main()
 
                 glm::vec3 d = normalize(camera.get_ray(u, v).direction);
                 Ray r{ camera.position(), d, 1.0f / d };
-                Dag::Hit result = dag.intersect(r, 7, root.value());
+                Dag::Hit result = dag.intersect(r, 10, root.value());
 
                 // Jeśli promień uciekł w pustkę (nie trafił w nic)
                 if (result.t == std::numeric_limits<float>::infinity())
