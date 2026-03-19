@@ -4,27 +4,20 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <iostream>
 
 #include <vrt/core/camera.hpp>
 #include <vrt/core/buffer_2d.hpp>
 #include <vrt/core/types.hpp>
-#include <vrt/core/scene.hpp>
 
 #include <vrt/math/ray.hpp>
-#include <vrt/math/math.hpp>
-#include <vrt/math/aabb.hpp>
-
-#include <vrt/accel/blas.hpp>
-
-#include <vrt/rt/hit.hpp>
-#include <vrt/rt/intersector.hpp>
 
 #include <vrt/gfx/window.hpp>
 #include <vrt/gfx/presenter.hpp>
+
 #include <vrt/accel/dag.hpp>
 
 #include <vrt/voxel/voxel_model.hpp>
-#include <iostream>
 
 using namespace vrt;
 
@@ -60,12 +53,12 @@ int main()
 
     Camera camera{
         static_cast<float>(resolution_width) / resolution_height,
-        radians(120.f),
+        glm::radians(120.f),
         -90.f, 0, glm::vec3{80},
     };
     VoxelModel my_model;
 
-    if (!my_model.load_obj("san-miguel-low-poly.obj", 1750))
+    if (!my_model.load_obj("san-miguel-low-poly.obj", 1024))
     {
         return -1;
     }

@@ -32,14 +32,13 @@ FetchContent_Declare(
 )
 
 add_library(vrt STATIC
-	"src/io/ppm_writer.cpp"
 	"src/core/camera.cpp"
-    "src/math/aabb.cpp" 
-	
+     
 	"src/gfx/window.cpp" 
 	"src/gfx/presenter.cpp" 
-	"src/rt/intersector.cpp"
-  "src/accel/blas.cpp" "src/accel/dag.cpp" "src/voxel/voxel_model.cpp")
+	"src/accel/dag.cpp"
+	"src/voxel/voxel_model.cpp"
+)
 
 target_include_directories(vrt PUBLIC include)
 
