@@ -638,12 +638,25 @@ struct TempNode
     }
 };
 
+struct PosHistory
+{
+    int positions[4];
+    std::uint8_t head = 0;
+    std::uint8_t count = 0;
+
+    void add(int pos)
+    {
+        positions[head] = pos;
+        head = (head + 1) % 4;
+        if (count < 4) count++;
+    }
+};
 
 template <typename T>
 vrt::Dag::Node insert_with_sliding_window(
     const TempNode<T>& temp,
     std::vector<T>& target_buffer,
-    std::unordered_map<size_t, int>& index_map)
+    std::unordered_map<size_t, PosHistory>& index_map)
 {
     vrt::Dag::Node final_node;
     final_node.index = 0;
@@ -663,47 +676,49 @@ vrt::Dag::Node insert_with_sliding_window(
 
     if (it != index_map.end())
     {
-        // Wyciągamy naszą jedyną, najnowszą pozycję pierwszego elementu
-        int pos = it->second;
-
-        // Okno zawierające nasz element na pozycji 'pos' 
-        // mogło zacząć się maksymalnie 7 pozycji wcześniej
-        int start_i = std::max(0, pos - 7);
-
-        for (int i = start_i; i <= pos; ++i)
+        // Iterujemy po maksymalnie 4 ostatnich pozycjach (bez alokacji pamięci!)
+        for (int h = 0; h < it->second.count; ++h)
         {
-            int window_size = std::min(8, (int)(target_buffer.size() - i));
-            if (window_size < N) continue;
+            int pos = it->second.positions[h];
 
-            bool window_has_all = true;
-            int current_offsets[8] = { 0 };
+            int start_i = std::max(0, pos - 7);
 
-            for (int e = 0; e < N; ++e)
+            for (int i = start_i; i <= pos; ++i)
             {
-                bool found_e = false;
-                for (int w = 0; w < window_size; ++w)
+                int window_size = std::min(8, (int)(target_buffer.size() - i));
+                if (window_size < N) continue;
+
+                bool window_has_all = true;
+                int current_offsets[8] = { 0 };
+
+                for (int e = 0; e < N; ++e)
                 {
-                    if (temp.elements[e] == target_buffer[i + w])
+                    bool found_e = false;
+                    for (int w = 0; w < window_size; ++w)
                     {
-                        current_offsets[e] = w;
-                        found_e = true;
+                        if (temp.elements[e] == target_buffer[i + w])
+                        {
+                            current_offsets[e] = w;
+                            found_e = true;
+                            break;
+                        }
+                    }
+                    if (!found_e)
+                    {
+                        window_has_all = false;
                         break;
                     }
                 }
-                if (!found_e)
+
+                if (window_has_all)
                 {
-                    window_has_all = false;
-                    break;
+                    found_match = true;
+                    best_index = i;
+                    for (int e = 0; e < N; ++e) best_offsets[e] = current_offsets[e];
+                    break; // Przerwij pętlę po 'i'
                 }
             }
-
-            if (window_has_all)
-            {
-                found_match = true;
-                best_index = i; // Zmieniłem z best_index na best_base_index, tak jak miałeś pierwotnie
-                for (int e = 0; e < N; ++e) best_offsets[e] = current_offsets[e];
-                break; // Znaleźliśmy okno, przerywamy pętlę 'i'
-            }
+            if (found_match) break; // Przerwij pętlę po 'pos'
         }
     }
 
@@ -768,7 +783,7 @@ vrt::Dag::Node insert_with_sliding_window(
                 for (const auto& missing : missing_elements)
                 {
                     target_buffer.push_back(missing);
-                    index_map[hash_memory(missing)] = target_buffer.size() - 1;
+                    index_map[hash_memory(missing)].add(target_buffer.size() - 1);
                 }
                 break;
             }
@@ -799,7 +814,7 @@ vrt::Dag::Node insert_with_sliding_window(
                 offset = unique_elements.size();
                 unique_elements.push_back(temp.elements[e]);
                 target_buffer.push_back(temp.elements[e]);
-                index_map[hash_memory(temp.elements[e])] = target_buffer.size() - 1;
+                index_map[hash_memory(temp.elements[e])].add(target_buffer.size() - 1);
             }
             best_offsets[e] = offset;
         }
@@ -859,8 +874,8 @@ vrt::Dag::Node vrt::Dag::build(u8 depth, const std::filesystem::path& filepath)
             return (63 - std::countl_zero(diff)) / 3;
         };
 
-    std::unordered_map<size_t, int> leaf_index_map;
-    std::vector<std::unordered_map<size_t, int>> node_index_maps(depth);
+    std::unordered_map<size_t, PosHistory> leaf_index_map;
+    std::vector<std::unordered_map<size_t, PosHistory>> node_index_maps(depth);
     auto insert_leaf = [&](TempNode<Voxel>& leaves) -> Node
         {
             return insert_with_sliding_window(leaves, leaves_, leaf_index_map);

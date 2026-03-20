@@ -22,8 +22,15 @@ namespace vrt
 		static constexpr float MIN_PITCH = -89.0f;
 		static constexpr float MAX_PITCH = 89.0f;
 
-		Camera(float aspect_ratio, float fov, float yaw = DEFAULT_YAW,
-			float pitch = DEFAULT_PITCH, glm::vec3 position = glm::vec3{0}, glm::vec3 world_up = glm::vec3{ 0,1,0 });
+		Camera(
+			float aspect_ratio, 
+			float fov, 
+			float yaw = DEFAULT_YAW,
+			float pitch = DEFAULT_PITCH,
+			float speed = DEFAULT_SPEED,
+			glm::vec3 position = glm::vec3{0}, 
+			glm::vec3 world_up = glm::vec3{ 0,1,0 }
+		);
 
 		void process_keyboard(Direction direction, float deltaTime) noexcept;
 		void process_mouse_movement(float xoffset, float yoffset, bool constrainPitch = true) noexcept;

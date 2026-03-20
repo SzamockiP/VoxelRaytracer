@@ -39,7 +39,7 @@ void processInput(const Window& window, Camera& camera, float dt)
 
 int main()
 {
-    const int tree_depth = 12;
+    const int tree_depth = 14;
 
     const int window_width = 1280;
     const int window_height = 720;
@@ -56,7 +56,9 @@ int main()
     Camera camera{
         static_cast<float>(resolution_width) / resolution_height,
         glm::radians(120.f),
-        -90.f, 0, glm::vec3{0},
+        -90.f,
+        0,
+        static_cast<float>(1u << std::max(0, tree_depth - 5))
     };
     /*VoxelModel my_model;
 
@@ -72,7 +74,9 @@ int main()
     });*/
 
     vrt::Dag dag;
-    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/4096.bin");
+    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/4096.bin");
+    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/8192.bin");
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/16384.bin");
 
     if (root.descriptor == 0)
     {
@@ -103,7 +107,7 @@ int main()
 
         camera.process_mouse_movement(dx, dy);
 
-        //#pragma omp parallel for schedule(dynamic, 1)
+        #pragma omp parallel for schedule(dynamic, 1)
         for (int y = 0; y < resolution_height; ++y)
         {
             for (int x = 0; x < resolution_width; ++x)
@@ -141,7 +145,8 @@ int main()
                     float lightness = std::clamp(diffuse + ambient, 0.0f, 1.0f);
 
                     // 3. KOMPOZYCJA
-                    color_buffer(x, y) = base_color * lightness;
+                    color_buffer(x, y) = base_color;
+                    //color_buffer(x, y) = base_color * lightness;
                 }
             }
         }

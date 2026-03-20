@@ -2,9 +2,16 @@
 #include <glm/glm.hpp>
 #include <algorithm>
 
-vrt::Camera::Camera(float aspect_ratio, float fov, float yaw,
-	float pitch, glm::vec3 position, glm::vec3 world_up) :
-	aspect_ratio_(aspect_ratio), fov_(fov), yaw_(yaw), pitch_(pitch), position_(position), world_up_(world_up)
+vrt::Camera::Camera(
+	float aspect_ratio,
+	float fov,
+	float yaw,
+	float pitch,
+	float speed,
+	glm::vec3 position,
+	glm::vec3 world_up
+) :
+	aspect_ratio_(aspect_ratio), fov_(fov), yaw_(yaw), pitch_(pitch), movement_speed_(speed), position_(position), world_up_(world_up)
 {
 	update_vectors();
 
