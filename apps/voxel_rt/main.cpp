@@ -39,7 +39,7 @@ void processInput(const Window& window, Camera& camera, float dt)
 
 int main()
 {
-    const int tree_depth = 10;
+    const int tree_depth = 12;
 
     const int window_width = 1280;
     const int window_height = 720;
@@ -56,9 +56,9 @@ int main()
     Camera camera{
         static_cast<float>(resolution_width) / resolution_height,
         glm::radians(120.f),
-        -90.f, 0, glm::vec3{80},
+        -90.f, 0, glm::vec3{0},
     };
-    VoxelModel my_model;
+    /*VoxelModel my_model;
 
     if (!my_model.load_obj("san-miguel-low-poly.obj", 1u << tree_depth))
     {
@@ -69,16 +69,17 @@ int main()
     auto root = dag.build(tree_depth, glm::vec3(0.0f), [&my_model](glm::vec3 pos)
     {
         return my_model.sample(pos);
-    });
+    });*/
 
-    if (!root.has_value())
+    vrt::Dag dag;
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/4096.bin");
+
+    if (root.descriptor == 0)
     {
         std::cerr << "Blad: DAG jest pusty!\n";
         return -1;
     }
 
-    my_model.grid.clear();
-    my_model.grid.shrink_to_fit();
     dag.debug();
 
     float current_frame_time = 0.0f;
@@ -112,7 +113,7 @@ int main()
 
                 glm::vec3 d = normalize(camera.get_ray(u, v).direction);
                 Ray r{ camera.position(), d, 1.0f / d };
-                Dag::Hit result = dag.intersect(r, tree_depth, root.value());
+                Dag::Hit result = dag.intersect(r, tree_depth, root);
 
                 // Jeśli promień uciekł w pustkę (nie trafił w nic)
                 if (result.t == std::numeric_limits<float>::infinity())

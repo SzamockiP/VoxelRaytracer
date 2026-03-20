@@ -52,6 +52,14 @@ namespace vrt
             }
 
             const bool is_leaf() const { return index & (1u << 31); }
+
+            void set_child_offset(int octant, u32 offset)
+            {
+                u32 safe_offset = (offset & 0x7) | 0x8;
+
+                descriptor &= ~(0xF << (octant * 4));
+                descriptor |= (safe_offset << (octant * 4));
+            }
         };
 
         struct Hit
@@ -68,7 +76,7 @@ namespace vrt
         Node add_leaf(const std::array<Voxel, 8>& leaf, u8 mask);
 
         std::optional<Node> build(u8 depth, const glm::vec3& center, const std::function<std::optional<Voxel>(glm::vec3)>& sampler);
-        Node build(u8 depth, const glm::vec3& center, const std::filesystem::path& filepath);
+        Node build(u8 depth, const std::filesystem::path& filepath);
 
         Hit intersect(const Ray& ray, u8 depth, const Node& root) const noexcept;
 

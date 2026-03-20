@@ -3,6 +3,10 @@
 #include <stdexcept>
 #include <fstream>
 #include <bit>
+#include <ranges>
+#include <print>
+#include <string_view>
+#include <unordered_map>
 
 // return index to the first object of the sequence
 vrt::Dag::Node vrt::Dag::add_node(const std::array<Node, 8>& node, u8 mask)
@@ -13,12 +17,12 @@ vrt::Dag::Node vrt::Dag::add_node(const std::array<Node, 8>& node, u8 mask)
         throw std::runtime_error("dag.cpp::add_node::mask");
     }
 
-    // check, if all of nodes are the same and are leaves to deduplicate 
-    if (mask == 0xFF && node[0].is_leaf() && std::ranges::all_of(node, [&node](const auto& x) { return x == node[0]; }))
-    {
-        // we just return the node, and delegate insertion to next level
-        return node[0];
-    }
+    //// check, if all of nodes are the same and are leaves to deduplicate 
+    //if (mask == 0xFF && node[0].is_leaf() && std::ranges::all_of(node, [&node](const auto& x) { return x == node[0]; }))
+    //{
+    //    // we just return the node, and delegate insertion to next level
+    //    return node[0];
+    //}
 
     // gather nodes before sort
     std::array<std::pair<Node, u8>, 8> active_nodes;
@@ -498,7 +502,7 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
             std::uint32_t child_index = current_node.index + offset;
 
             // 2. SCHODZENIE W DÓŁ
-            if (depth > 0)
+            if (depth > 1)
             {
                 float t_next = tx;
                 if (ty < t_next) t_next = ty;
@@ -597,6 +601,14 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
 
 
 template <typename T>
+inline size_t hash_memory(const T& val)
+{
+    return std::hash<std::string_view>{}(
+        std::string_view(reinterpret_cast<const char*>(&val), sizeof(T))
+        );
+}
+
+template <typename T>
 struct TempNode
 {
     vrt::u8 mask;
@@ -627,7 +639,192 @@ struct TempNode
 };
 
 
-vrt::Dag::Node vrt::Dag::build(u8 depth, const glm::vec3& center, const std::filesystem::path& filepath)
+template <typename T>
+vrt::Dag::Node insert_with_sliding_window(
+    const TempNode<T>& temp,
+    std::vector<T>& target_buffer,
+    std::unordered_map<size_t, std::vector<int>>& index_map)
+{
+    vrt::Dag::Node final_node;
+    final_node.index = 0;
+    final_node.descriptor = 0;
+
+    int N = temp.elements.size();
+    if (N == 0) return final_node;
+
+    bool found_match = false;
+    int best_index = -1;
+    int best_offsets[8] = { 0 }; // offset mask for node
+
+    // looking in window
+    // 1. SZYBKIE SZUKANIE W OZNACZONYM OKNIE (O(1) zamiast O(N))
+    size_t first_element_hash = hash_memory(temp.elements[0]);
+    auto it = index_map.find(first_element_hash);
+
+    if (it != index_map.end())
+    {
+        // Sprawdzamy tylko te miejsca, gdzie występuje pierwszy element!
+        for (int pos : it->second)
+        {
+            // Okno zawierające nasz element na pozycji 'pos' 
+            // mogło zacząć się maksymalnie 7 pozycji wcześniej
+            int start_i = std::max(0, pos - 7);
+
+            for (int i = start_i; i <= pos; ++i)
+            {
+                int window_size = std::min(8, (int)(target_buffer.size() - i));
+                if (window_size < N) continue;
+
+                bool window_has_all = true;
+                int current_offsets[8] = { 0 };
+
+                for (int e = 0; e < N; ++e)
+                {
+                    bool found_e = false;
+                    for (int w = 0; w < window_size; ++w)
+                    {
+                        if (temp.elements[e] == target_buffer[i + w])
+                        {
+                            current_offsets[e] = w;
+                            found_e = true;
+                            break;
+                        }
+                    }
+                    if (!found_e)
+                    {
+                        window_has_all = false;
+                        break;
+                    }
+                }
+
+                if (window_has_all)
+                {
+                    found_match = true;
+                    best_index = i;
+                    for (int e = 0; e < N; ++e) best_offsets[e] = current_offsets[e];
+                    break; // Przerwij pętlę po 'i'
+                }
+            }
+            if (found_match) break; // Przerwij pętlę po 'pos'
+        }
+    }
+
+    // look for overlap on end
+    if (!found_match)
+    {
+        int max_overlap = std::min(7, (int)target_buffer.size());
+
+        for (int overlap = max_overlap; overlap >= 1; --overlap)
+        {
+            int prospective_base = target_buffer.size() - overlap;
+
+            std::vector<T> missing_elements;
+            int prospective_offsets[8] = { 0 };
+            bool element_resolved[8] = { false };
+
+            // get elements already at the tail 
+            for (int e = 0; e < N; ++e)
+            {
+                for (int w = 0; w < overlap; ++w)
+                {
+                    if (temp.elements[e] == target_buffer[prospective_base + w])
+                    {
+                        prospective_offsets[e] = w;
+                        element_resolved[e] = true;
+                        break;
+                    }
+                }
+            }
+
+            // get missing elements
+            for (int e = 0; e < N; ++e)
+            {
+                if (!element_resolved[e])
+                {
+                    bool already_missing = false;
+                    for (size_t m = 0; m < missing_elements.size(); ++m)
+                    {
+                        if (temp.elements[e] == missing_elements[m])
+                        {
+                            // set offset for missing element
+                            prospective_offsets[e] = overlap + m;
+                            already_missing = true;
+                            break;
+                        }
+                    }
+                    if (!already_missing)
+                    {
+                        prospective_offsets[e] = overlap + missing_elements.size();
+                        missing_elements.push_back(temp.elements[e]);
+                    }
+                }
+            }
+
+            // check, if they fit
+            if (overlap + missing_elements.size() <= 8)
+            {
+                found_match = true;
+                best_index = prospective_base;
+                for (int e = 0; e < N; ++e) best_offsets[e] = prospective_offsets[e];
+
+                for (const auto& missing : missing_elements)
+                {
+                    target_buffer.push_back(missing);
+                    index_map[hash_memory(missing)].push_back(target_buffer.size() - 1);
+                }
+                break;
+            }
+        }
+    }
+
+    // no window with partial overlap
+    if (!found_match)
+    {
+        best_index = target_buffer.size();
+        std::vector<T> unique_elements;
+
+        for (int e = 0; e < N; ++e)
+        {
+            int offset = -1;
+            // make unique elements
+            for (size_t u = 0; u < unique_elements.size(); ++u)
+            {
+                if (temp.elements[e] == unique_elements[u])
+                {
+                    offset = u;
+                    break;
+                }
+            }
+            
+            if (offset == -1)
+            {
+                offset = unique_elements.size();
+                unique_elements.push_back(temp.elements[e]);
+                target_buffer.push_back(temp.elements[e]);
+                index_map[hash_memory(temp.elements[e])].push_back(target_buffer.size() - 1);
+            }
+            best_offsets[e] = offset;
+        }
+    }
+
+    // build descriptor
+    final_node.index = best_index;
+    int e_idx = 0;
+
+    // iterate over every octant and set offset
+    for (int octant = 0; octant < 8; ++octant)
+    {
+        if (temp.mask & (1 << octant))
+        {
+            final_node.set_child_offset(octant, best_offsets[e_idx]);
+            e_idx++;
+        }
+    }
+
+    return final_node;
+}
+
+vrt::Dag::Node vrt::Dag::build(u8 depth, const std::filesystem::path& filepath)
 {
     if (!std::filesystem::exists(filepath))
     {
@@ -636,14 +833,26 @@ vrt::Dag::Node vrt::Dag::build(u8 depth, const glm::vec3& center, const std::fil
 
     std::ifstream file(filepath, std::ios::binary);
 
+    
     std::vector<TempNode<Node>> temp_nodes(depth);
     TempNode<Voxel> temp_leaf;
 
+    leaves_.clear();
+    nodes_.clear();
+
+    std::vector<std::vector<Node>> level_nodes(depth);
+
+    #pragma pack(push, 1)
     struct VoxelData
     {
         u64 morton;
         Voxel voxel;
-    } voxel_data;
+    };
+    #pragma pack(pop)
+
+    VoxelData voxel_data;
+    size_t total_voxels = std::filesystem::file_size(filepath) / sizeof(VoxelData);
+    size_t processed_voxels = 0;
 
     auto calculate_divergence = [](u64 morton_a, u64 morton_b) -> int
         {
@@ -652,25 +861,33 @@ vrt::Dag::Node vrt::Dag::build(u8 depth, const glm::vec3& center, const std::fil
             return (63 - std::countl_zero(diff)) / 3;
         };
 
-
+    std::unordered_map<size_t, std::vector<int>> leaf_index_map;
+    std::vector<std::unordered_map<size_t, std::vector<int>>> node_index_maps(depth);
     auto insert_leaf = [&](TempNode<Voxel>& leaves) -> Node
         {
-            return Node{};
+            return insert_with_sliding_window(leaves, leaves_, leaf_index_map);
         };
 
-    auto insert_node = [&](TempNode<Node>& nodes) -> Node
+    auto insert_node = [&](TempNode<Node>& nodes, int level) -> Node
         {
-            return Node{};
+            return insert_with_sliding_window(nodes, level_nodes[level], node_index_maps[level]);
         };
 
     // get first voxel, may be empty so return empty root
     if (!file.read(reinterpret_cast<char*>(&voxel_data), sizeof(VoxelData))) return Node{};
+    processed_voxels++;
 
     u64 last_morton = voxel_data.morton;
     temp_leaf.add(last_morton & 0b111, voxel_data.voxel);
 
     while (file.read(reinterpret_cast<char*>(&voxel_data), sizeof(VoxelData)))
     {
+        processed_voxels++;
+        if (processed_voxels % 10000 == 0)
+        {
+            double percent = (static_cast<double>(processed_voxels) * 100.0) / total_voxels;
+            std::print("\rProcessed voxels: {}/{} [{:.2f}%]", processed_voxels,total_voxels,percent);
+        }
         // voxel in the same node
         if ((last_morton >> 3) == (voxel_data.morton >> 3))
         {
@@ -678,26 +895,33 @@ vrt::Dag::Node vrt::Dag::build(u8 depth, const glm::vec3& center, const std::fil
         }
         else
         {
-            // fistly, make a node from leaves
+            // a) Zwijamy liście do węzła Poziomu 0
             Node node = insert_leaf(temp_leaf);
             temp_leaf.clear();
 
-            // insert node into temp_node above
             int current_level = 0;
             temp_nodes[current_level].add((last_morton >> 3) & 0b111, node);
 
-            // calculate level of change
+            // b) Obliczamy, na którym poziomie ścieżki się rozchodzą
             int max_level = calculate_divergence(last_morton, voxel_data.morton);
 
-            // insert nodes into final nodes 
-            while (current_level < max_level)
+            // ZABEZPIECZENIE: Ucinamy bzdury, jeśli w kodach Mortona są śmieci 
+            // (Rozgałęzienie nie może być wyższe niż przedostatni poziom drzewa)
+            max_level = std::min(max_level, (int)depth - 1);
+
+            // c) Kaskada - UWAGA: max_level - 1 ! (Nie zamykamy rodzica, który nadal przyjmuje dzieci)
+            while (current_level < max_level - 1)
             {
-                node = insert_node(temp_nodes[current_level]);
+                node = insert_node(temp_nodes[current_level], current_level);
                 temp_nodes[current_level].clear();
 
                 ++current_level;
 
-                u8 parent_octant = (last_morton >> (3 * current_level + 1)) & 0b111;
+                // Zabezpieczenie ostateczne (Nigdy nie wpychamy ponad zdefiniowaną głębokość)
+                if (current_level >= depth) break;
+
+                // POPRAWNA MATEMATYKA (Z nawiasami!)
+                u8 parent_octant = (last_morton >> (3 * (current_level + 1))) & 0b111;
                 temp_nodes[current_level].add(parent_octant, node);
             }
 
@@ -707,6 +931,61 @@ vrt::Dag::Node vrt::Dag::build(u8 depth, const glm::vec3& center, const std::fil
         last_morton = voxel_data.morton;
     }
 
-    // TODO: flush rest of tree
-    return Node{};
+    // flush rest of tree
+    if (!temp_leaf.is_empty())
+    {
+        Node node = insert_leaf(temp_leaf);
+        temp_leaf.clear();
+        temp_nodes[0].add((last_morton >> 3) & 0b111, node);
+    }
+
+    for (int current_level = 0; current_level < depth; ++current_level)
+    {
+        if (!temp_nodes[current_level].is_empty())
+        {
+            Node node = insert_node(temp_nodes[current_level], current_level);
+            temp_nodes[current_level].clear();
+
+            // if not root, pass higher
+            if (current_level + 1 < depth)
+            {
+                int parent_octant = (last_morton >> (3 * (current_level + 2))) & 0b111;
+                temp_nodes[current_level + 1].add(parent_octant, node);
+            }
+        }
+    }
+
+    size_t total_topology_nodes = 0;
+    std::vector<size_t> level_offsets(depth, 0);
+
+    for (int d = 0; d < depth; ++d)
+    {
+        level_offsets[d] = total_topology_nodes;
+        total_topology_nodes += level_nodes[d].size();
+    }
+
+    // 2. ALOKACJA OSTATECZNEGO BUFORA TOPOLOGII
+    std::vector<Node> gpu_topology_buffer;
+    nodes_.reserve(total_topology_nodes);
+
+    // 3. KOPIOWANIE I ŁATANIE WSKAŹNIKÓW (The Magic)
+    for (int d = 0; d < depth; ++d)
+    {
+        for (const Node& node : level_nodes[d])
+        {
+            Node patched_node = node;
+
+            // Łatamy wskaźnik TYLKO dla węzłów powyżej poziomu 0.
+            // (Bo poziom 0 wskazuje na final_leaves, które są oddzielnym buforem)
+            if (d > 0)
+            {
+                // Dodajemy globalny offset poziomu, na który ten węzeł wskazuje (czyli d - 1)
+                patched_node.index += level_offsets[d - 1];
+            }
+
+            nodes_.push_back(patched_node);
+        }
+    }
+
+    return nodes_.empty() ? Node{} : nodes_.back();
 }
