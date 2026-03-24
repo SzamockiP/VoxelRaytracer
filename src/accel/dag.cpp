@@ -262,105 +262,52 @@ struct PosHistory
     }
 };
 
-// LRU Cache O(1) — własna doubly-linked lista z raw pointerami.
-// unordered_map<Key, Node*> — brak nested template iteratora jako pola (clangd-friendly).
-// Eviction, get i put są wszystkie O(1).
+// Aproksymacja LRU przez move-to-front swap.
+// Aktywne wpisy leżą w pool[0..size_used). get/put swapuje trafiony element z pool[0].
+// Eviction = zawsze pool[size_used-1] — naturalnie najrzadziej używany.
+// Brak linked listy, brak free_list, Node ma tylko key+value.
 template <typename Key, typename Value>
 class LruCache
 {
 private:
     struct Node
     {
-        Key   key;
-        Value value;
-        Node* prev;
-        Node* next;
-
-        Node(const Key& k, const Value& v)
-            : key(k), value(v), prev(nullptr), next(nullptr) {}
+        Key   key   = {};
+        Value value = {};
     };
 
-    // head = MRU, tail = LRU
-    Node* head = nullptr;
-    Node* tail = nullptr;
-    std::unordered_map<Key, Node*> map;
+    std::vector<Node>            pool;
+    std::unordered_map<Key, int> map;  // key → indeks w pool
+    int    size_used = 0;
     size_t cap;
 
-    void detach(Node* n)
+    // Przesuwa element z idx na pozycję 0 przez swap, aktualizuje mapę dla obu kluczy.
+    void move_to_front(int idx)
     {
-        if (n->prev) n->prev->next = n->next;
-        else         head = n->next;
-        if (n->next) n->next->prev = n->prev;
-        else         tail = n->prev;
-        n->prev = n->next = nullptr;
-    }
-
-    void push_front(Node* n)
-    {
-        n->next = head;
-        n->prev = nullptr;
-        if (head) head->prev = n;
-        else      tail = n;
-        head = n;
+        if (idx == 0) return;
+        map[pool[0].key] = idx;
+        map[pool[idx].key] = 0;
+        std::swap(pool[0], pool[idx]);
     }
 
 public:
     explicit LruCache(size_t limit = 5000000) : cap(limit)
     {
+        pool.resize(cap);
         map.reserve(cap);
     }
 
-    ~LruCache()
-    {
-        for (Node* n = head; n; )
-        {
-            Node* next = n->next;
-            delete n;
-            n = next;
-        }
-    }
-
-    // Non-copyable
+    LruCache(LruCache&&)            = default;
+    LruCache& operator=(LruCache&&) = default;
     LruCache(const LruCache&)            = delete;
     LruCache& operator=(const LruCache&) = delete;
-
-    // Movable — wymagane przez std::vector
-    LruCache(LruCache&& o) noexcept
-        : head(o.head), tail(o.tail), map(std::move(o.map)), cap(o.cap)
-    {
-        o.head = o.tail = nullptr;
-    }
-
-    LruCache& operator=(LruCache&& o) noexcept
-    {
-        if (this != &o)
-        {
-            // Zniszcz obecne węzły
-            for (Node* n = head; n; )
-            {
-                Node* next = n->next;
-                delete n;
-                n = next;
-            }
-            head = o.head; tail = o.tail;
-            map  = std::move(o.map);
-            cap  = o.cap;
-            o.head = o.tail = nullptr;
-        }
-        return *this;
-    }
 
     Value* get(const Key& key)
     {
         auto it = map.find(key);
         if (it == map.end()) return nullptr;
-        Node* n = it->second;
-        if (n != head)
-        {
-            detach(n);
-            push_front(n);
-        }
-        return &(n->value);
+        move_to_front(it->second);
+        return &pool[0].value;
     }
 
     void put(const Key& key, const Value& val)
@@ -368,28 +315,29 @@ public:
         auto it = map.find(key);
         if (it != map.end())
         {
-            Node* n = it->second;
-            n->value = val;
-            if (n != head)
-            {
-                detach(n);
-                push_front(n);
-            }
+            int idx = it->second;
+            pool[idx].value = val;
+            move_to_front(idx);
             return;
         }
 
-        if (map.size() >= cap)
+        int target;
+        if (size_used < static_cast<int>(cap))
         {
-            // Wyrzuć LRU (tail) — O(1)
-            Node* lru = tail;
-            detach(lru);
-            map.erase(lru->key);
-            delete lru;
+            // Jest wolne miejsce — wstaw na koniec aktywnej strefy
+            target = size_used++;
+        }
+        else
+        {
+            // Cache pełny — wyrzuć pool[cap-1] (naturalnie najrzadziej używany)
+            target = static_cast<int>(cap) - 1;
+            map.erase(pool[target].key);
         }
 
-        Node* n = new Node{ key, val };
-        push_front(n);
-        map[key] = n;
+        pool[target].key   = key;
+        pool[target].value = val;
+        map[key] = target;
+        move_to_front(target);
     }
 };
 
