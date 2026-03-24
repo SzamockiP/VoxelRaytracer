@@ -17,8 +17,6 @@
 
 #include <vrt/accel/dag.hpp>
 
-#include <vrt/voxel/voxel_model.hpp>
-
 using namespace vrt;
 
 void processInput(const Window& window, Camera& camera, float dt)
@@ -39,7 +37,7 @@ void processInput(const Window& window, Camera& camera, float dt)
 
 int main()
 {
-    const int tree_depth = 12;
+    const int tree_depth = 11;
 
     const int window_width = 1280;
     const int window_height = 720;
@@ -61,25 +59,14 @@ int main()
         static_cast<float>(1u << std::max(0, tree_depth - 4)),
         glm::vec3{static_cast<float>(1u << std::max(0, tree_depth - 4))}
     };
-    /*VoxelModel my_model;
-
-    if (!my_model.load_obj("san-miguel-low-poly.obj", 1u << tree_depth))
-    {
-        return -1;
-    }
-    
-    vrt::Dag dag;
-    auto root = dag.build(tree_depth, glm::vec3(0.0f), [&my_model](glm::vec3 pos)
-    {
-        return my_model.sample(pos);
-    });*/
 
     vrt::Dag dag;
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/2048.bin");
     //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/4096.bin");
     //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/8192.bin");
-    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/2048.bin");
-    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/1024.bin");
     //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/32768.bin");
+    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/2048.bin");
+    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/1024.bin");
 
     if (root.descriptor == 0)
     {
@@ -122,34 +109,19 @@ int main()
                 Ray r{ camera.position(), d, 1.0f / d };
                 Dag::Hit result = dag.intersect(r, tree_depth, root);
 
-                // Jeśli promień uciekł w pustkę (nie trafił w nic)
                 if (result.t == std::numeric_limits<float>::infinity())
                 {
-                    // Rysujemy tło (np. ciemnoszare / lekko niebieskie)
                     color_buffer(x, y) = glm::vec3{ 0.1f, 0.1f, 0.15f };
                 }
                 else
                 {
-                    // 1. ODKODOWANIE KOLORU z unii Voxel (u8 na floaty 0.0-1.0)
                     glm::vec3 base_color{
                         result.voxel.r / 255.0f,
                         result.voxel.g / 255.0f,
                         result.voxel.b / 255.0f
                     };
 
-                    // 2. OŚWIETLENIE (tylko słońce i ambient, zero mgły)
-                    glm::vec3 light_dir = normalize(glm::vec3{ 5.0f, 10.0f, 8.0f });
-
-                    // Obliczamy jak bardzo normalna jest odwrócona do światła (0.0 to cień, 1.0 to pełne słońce)
-                    float diffuse = std::max(dot(result.normal, light_dir), 0.0f);
-
-                    // Ambient - żeby w cieniu cokolwiek było widać (zmień na 0.0f, jeśli chcesz absolutny mrok w cieniu)
-                    float ambient = 0.15f;
-                    float lightness = std::clamp(diffuse + ambient, 0.0f, 1.0f);
-
-                    // 3. KOMPOZYCJA
                     color_buffer(x, y) = base_color;
-                    //color_buffer(x, y) = base_color * lightness;
                 }
             }
         }
