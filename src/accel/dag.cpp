@@ -95,14 +95,17 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth,
 
     float half = root_half;
 
+    // Czas przejścia promienia przez środek korzenia wzdłuż każdej osi
     float txm = (-O.x) * invD.x;
     float tym = (-O.y) * invD.y;
     float tzm = (-O.z) * invD.z;
 
+    // Startowy oktant: bit=1 jeśli środek węzła jest już za nami na danej osi
     std::uint8_t oct_idx = (std::uint8_t(txm <= t_enter) << 0) |
         (std::uint8_t(tym <= t_enter) << 1) |
         (std::uint8_t(tzm <= t_enter) << 2);
 
+    // Czas wyjścia z bieżącego oktantu wzdłuż każdej osi (INF jeśli już przekroczony)
     float tx = (txm > t_enter) ? txm : INF;
     float ty = (tym > t_enter) ? tym : INF;
     float tz = (tzm > t_enter) ? tzm : INF;
@@ -288,9 +291,11 @@ template <typename T> struct TempNode
     bool is_empty() const { return mask == 0; }
 };
 
+// Kołowy bufor ostatnich pozycji danego elementu w target_buffer.
+// Używany przez sliding window search jako punkt startowy przeszukiwania.
 struct PosHistory
 {
-    static constexpr int CAP = 32;
+    static constexpr int CAP = 32; // Ile ostatnich pozycji danego elementu pamiętamy
     int positions[CAP];
     std::uint8_t head = 0;
     std::uint8_t count = 0;
@@ -317,7 +322,6 @@ private:
         Key   key = {};
         Value value = {};
         bool  used = false;
-        bool  valid = false;  // czy slot jest zajęty
     };
 
     std::vector<Slot>            pool;
@@ -427,6 +431,10 @@ insert_with_sliding_window(const TempNode<T>& temp,
     int best_index = -1;
     int best_offsets[8] = { 0 };
 
+    // Szukamy okna w buforze, w którym wszystkie elementy temp już istnieją.
+    // Zaczynamy od znanych pozycji pierwszego elementu (z index_cache), by nie
+    // skanować całego bufora. Dla każdej kandydackiej pozycji sprawdzamy okno
+    // o rozmiarze do 8 — jeśli zawiera wszystkie N elementów, możemy je reużyć.
     PosHistory* history = index_cache.get(hash_memory(temp.elements[0]));
     if (history != nullptr)
     {
@@ -444,6 +452,7 @@ insert_with_sliding_window(const TempNode<T>& temp,
                 bool window_has_all = true;
                 int current_offsets[8] = { 0 };
 
+                // Sprawdź, czy każdy element temp mieści się gdzieś w oknie
                 for (int e = 0; e < N; ++e)
                 {
                     bool found_e = false;
@@ -562,9 +571,6 @@ vrt::Dag::Node vrt::Dag::build(u8 depth,
     }
 
     std::ifstream file(filepath, std::ios::binary);
-    // size_t cache_limit = 5000000;
-    // size_t cache_limit = 2500000;
-    // size_t cache_limit = 1000000;
     size_t cache_limit = 500000;
 
     ClockCache<size_t, PosHistory> leaf_index_cache(cache_limit);
@@ -681,6 +687,9 @@ vrt::Dag::Node vrt::Dag::build(u8 depth,
         temp_nodes[0].add((last_morton >> 3) & 0b111, node);
     }
 
+    // Domknięcie drzewa: przepychamy niezamknięte węzły od dołu do góry.
+    // Po przetworzeniu wszystkich wokseli mogą zostać niepuste temp_nodes
+    // na każdym poziomie — każdy musi zostać wstawiony i przekazany wyżej.
     for (int current_level = 0; current_level < depth; ++current_level)
     {
         if (!temp_nodes[current_level].is_empty())
@@ -707,6 +716,9 @@ vrt::Dag::Node vrt::Dag::build(u8 depth,
 
     nodes_.reserve(total_topology_nodes);
 
+    // Scalamy wszystkie poziomy do jednej płaskiej tablicy nodes_.
+    // Węzły były budowane per-poziom z lokalnymi indeksami — tu dodajemy
+    // globalny offset, by każdy węzeł wskazywał poprawny index w nodes_.
     for (int d = 0; d < depth; ++d)
     {
         for (const Node& node : level_nodes[d])

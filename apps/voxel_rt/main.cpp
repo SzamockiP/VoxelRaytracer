@@ -1,4 +1,4 @@
-﻿#include <print>
+#include <print>
 #include <cmath>
 #include <algorithm>
 #include <GLFW/glfw3.h>
@@ -42,8 +42,6 @@ int main()
     const int window_width = 1280;
     const int window_height = 720;
 
-    //const int resolution_width = 192;
-    //const int resolution_height = 108;
     const int resolution_width = 320;
     const int resolution_height = 180;
 
@@ -51,22 +49,19 @@ int main()
     Presenter presenter{ resolution_width, resolution_height };
     Buffer2D<glm::vec3> color_buffer{ resolution_width,resolution_height };
 
+    // Pozycja startowa i speed kamery = 2^(depth-4), czyli ~1/16 rozmiaru sceny
+    const float cam_scale = static_cast<float>(1u << std::max(0, tree_depth - 4));
     Camera camera{
         static_cast<float>(resolution_width) / resolution_height,
         glm::radians(120.f),
         -90.f,
         0,
-        static_cast<float>(1u << std::max(0, tree_depth - 4)),
-        glm::vec3{static_cast<float>(1u << std::max(0, tree_depth - 4))}
+        cam_scale,
+        glm::vec3{ cam_scale }
     };
 
     vrt::Dag dag;
     auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/2048.bin");
-    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/4096.bin");
-    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/8192.bin");
-    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/32768.bin");
-    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/2048.bin");
-    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/1024.bin");
 
     if (root.descriptor == 0)
     {
@@ -102,6 +97,7 @@ int main()
         {
             for (int x = 0; x < resolution_width; ++x)
             {
+                // Mapowanie piksela na NDC [-1, 1] (v odwrócone: góra ekranu = +1)
                 float u = (float(x) / resolution_width) * 2 - 1;
                 float v = 1.0f - (float(y) / resolution_height) * 2.0f;
 
@@ -132,7 +128,8 @@ int main()
         frame_count++;
         float time = (glfwGetTime() - start_frame) / frame_count;
 
-        window.set_window_title("fps/ms: " + std::to_string(1.0f / delta_time) + "/" + std::to_string(delta_time * 1000) +
-            "avg fps/ms: " + std::to_string(1.0f / time) + "/" + std::to_string(time  * 1000));
+        window.set_window_title(
+            "fps/ms: " + std::to_string(1.0f / delta_time) + "/" + std::to_string(delta_time * 1000) + "  |  " +
+            "avg fps/ms: " + std::to_string(1.0f / time) + "/" + std::to_string(time * 1000));
     }
 }

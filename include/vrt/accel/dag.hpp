@@ -51,10 +51,12 @@ namespace vrt
                 return raw == other.raw;
             }
 
-            const bool is_leaf() const { return index & (1u << 31); }
+            bool is_leaf() const { return index & (1u << 31); }
 
             void set_child_offset(int octant, u32 offset)
             {
+                // Bit 3 (0x8) to flaga validacji — sygnalizuje że oktant jest zajęty.
+                // Bity 0-2 (0x7) to offset dziecka względem base index węzła (0-7).
                 u32 safe_offset = (offset & 0x7) | 0x8;
 
                 descriptor &= ~(0xF << (octant * 4));
@@ -69,8 +71,8 @@ namespace vrt
             Voxel voxel;
         };
 
-        const std::vector<Node>& nodes() { return nodes_; }
-        const std::vector<Voxel>& leaves() { return leaves_; }
+        const std::vector<Node>& nodes() const { return nodes_; }
+        const std::vector<Voxel>& leaves() const { return leaves_; }
 
         Node build(u8 depth, const std::filesystem::path& filepath);
 
@@ -89,8 +91,5 @@ namespace vrt
     private:
         std::vector<Node>  nodes_;
         std::vector<Voxel> leaves_;
-
-        std::unordered_multimap<u64, u32> node_indices_;
-        std::unordered_multimap<u64, u32> leaf_indices_;
     };
 }
