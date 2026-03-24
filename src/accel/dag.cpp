@@ -1,398 +1,15 @@
-#include <vrt/accel/dag.hpp>
 #include <algorithm>
+#include <bit>
+#include <cstdint>
+#include <fstream>
+#include <list>
+#include <print>
+#include <ranges>
 #include <stdexcept>
+#include <string_view>
+#include <unordered_map>
+#include <vrt/accel/dag.hpp>
 
-// return index to the first object of the sequence
-vrt::Dag::Node vrt::Dag::add_node(const std::array<Node, 8>& node, u8 mask)
-{
-    // function does not work for empty node
-    if (mask == 0)
-    {
-        throw std::runtime_error("dag.cpp::add_node::mask");
-    }
-
-    // check, if all of nodes are the same and are leaves to deduplicate 
-    if (mask == 0xFF && node[0].is_leaf() && std::ranges::all_of(node, [&node](const auto& x) { return x == node[0]; }))
-    {
-        // we just return the node, and delegate insertion to next level
-        return node[0];
-    }
-
-    // gather nodes before sort
-    std::array<std::pair<Node, u8>, 8> active_nodes;
-    int active_count = 0;
-    for (u8 i = 0; i < 8; i++)
-    {
-        if (mask & (1u << i))
-        {
-            active_nodes[active_count++] = { node[i], i };
-        }
-    }
-
-    // sort array by first node values
-    std::sort(active_nodes.begin(), active_nodes.begin() + active_count,
-        [](const auto& a, const auto& b) { return a.first.raw < b.first.raw; });
-
-    // generate sequence and descriptor
-    std::array<Node, 8> unique_nodes;
-    u32 unique_count = 0;
-    u32 descriptor = 0;
-
-    for (int i = 0; i < active_count; i++)
-    {
-        // compress leaves
-        if (i == 0 || active_nodes[i].first.raw != unique_nodes[unique_count - 1].raw)
-        {
-            unique_nodes[unique_count] = active_nodes[i].first;
-            unique_count++;
-        }
-
-        u8 quarter_size = unique_count - 1;
-        u8 original_octant = active_nodes[i].second;
-
-        u32 child_data = 0b1000u | quarter_size;
-        descriptor |= (child_data << (4 * original_octant));
-    }
-
-    // insert sequence into leaves_ and leaf_indices_
-    u32 index = insert_node(std::span{ unique_nodes }.first(unique_count));
-
-    // create node with sequence index and descriptor
-    Node new_node;
-    new_node.index = index;
-    new_node.descriptor = descriptor;
-
-    // return node
-    return new_node;
-};
-
-// return index to the first object of the sequence
-vrt::Dag::Node vrt::Dag::add_leaf(const std::array<Voxel, 8>& leaf, u8 mask)
-{
-	// function does not work for empty leaf
-    if (mask == 0)
-    {
-        throw std::runtime_error("dag.cpp::add_leaf::mask");
-    }
-
-    // check, if you can make node a whole leaf
-    if (mask == 0xFF && std::ranges::all_of(leaf, [&leaf](const auto& x) { return x == leaf[0]; }))
-    {
-        Node solid_leaf;
-        solid_leaf.index = 1u << 31;
-        solid_leaf.voxel = leaf[0];
-        return solid_leaf;
-    }
-
-    // gather leaves before sort
-    std::array<std::pair<Voxel, u8>, 8> active_leaves;
-    int active_count = 0;
-    for (u8 i = 0; i < 8; i++)
-    {
-        if (mask & (1u << i))
-        {
-            active_leaves[active_count++] = { leaf[i], i };
-        }
-    }
-
-    // sort array by first leaf values
-    std::sort(active_leaves.begin(), active_leaves.begin() + active_count,
-        [](const auto& a, const auto& b){ return a.first.rgbe < b.first.rgbe; });
-
-
-    // generate sequence and descriptor
-    std::array<Voxel, 8> unique_leaves;
-    u32 unique_count = 0;
-    u32 descriptor = 0;
-
-    for (int i = 0; i < active_count; i++)
-    {
-        // compress leaves
-        if (i == 0 || active_leaves[i].first.rgbe != unique_leaves[unique_count - 1].rgbe)
-        {
-            unique_leaves[unique_count] = active_leaves[i].first;
-            unique_count++;
-        }
-
-        u8 quarter_size = unique_count - 1;
-        u8 original_octant = active_leaves[i].second;
-
-        u32 child_data = 0b1000u | quarter_size;
-        descriptor |= (child_data << (4 * original_octant));
-    }
-
-
-    // insert sequence into leaves_ and leaf_indices_
-    u32 index = insert_leaf(std::span{ unique_leaves }.first(unique_count));
-
-    // create node with sequence index and descriptor
-    Node node;
-    node.index = index;
-    node.descriptor = descriptor;
-    
-    // return node
-    return node;
-};
-
-vrt::u64 hash_voxel_sequence(std::span<vrt::Dag::Voxel> voxel_sequence)
-{
-    vrt::u64 hash = 0xcbf29ce484222325;
-    for (const auto voxel : voxel_sequence)
-    {
-        for (int i = 0; i < 32; i += 8)
-        {
-            hash ^= (voxel.rgbe >> i) & 0xFF;
-            hash *= 0x00000100000001b3;
-        }
-    }
-    return hash;
-}
-
-vrt::u32 vrt::Dag::insert_leaf(std::span<Voxel> voxel_sequence)
-{
-    const u32 K = voxel_sequence.size();
-    u64 hash = hash_voxel_sequence(voxel_sequence);
-
-    // check if sequence exists
-    auto range = leaf_indices_.equal_range(hash);
-    auto vec_span = std::span{ leaves_ };
-
-    for (auto it = range.first; it != range.second; ++it)
-    {
-        if (it->second + K > vec_span.size()) continue;
-        auto vec_subspan = vec_span.subspan(it->second, K);
-        if (std::ranges::equal(voxel_sequence, vec_subspan))
-        {
-            return it->second;
-        }
-    }
-
-    // didn't found
-    int max_overlap = std::min<int>(K - 1, vec_span.size());
-    int overlap_size = 0;
-
-    // check for overlaps on end
-    for (int n = max_overlap; n > 0; n--)
-    {
-        if (std::ranges::equal(vec_span.last(n), voxel_sequence.first(n)))
-        {
-            overlap_size = n;
-            break;
-        }
-    }
-
-    u32 return_index = leaves_.size() - overlap_size;
-    u32 old_size = leaves_.size();
-
-    leaves_.insert(leaves_.end(), voxel_sequence.begin() + overlap_size, voxel_sequence.end());
-    u32 new_size = leaves_.size();
-
-    for (u32 end_idx = old_size; end_idx < new_size; end_idx++)
-    {
-        // how far back can we look
-        u32 max_backtrack = std::min<u32>(8, end_idx + 1);
-
-        // build and hash sequences ending at end_idx with growing lengths
-        for (u32 seq_len = 1; seq_len <= max_backtrack; seq_len++)
-        {
-            u32 start_idx = end_idx - seq_len + 1;
-
-            // extract the exact sub_sequence and calculate its hash
-            auto sub_sequence = std::span{ leaves_ }.subspan(start_idx, seq_len);
-            u64 hash = hash_voxel_sequence(sub_sequence);
-
-            leaf_indices_.insert({ hash, start_idx });
-        }
-    }
-
-    return return_index;
-}
-
-vrt::u64 hash_node_sequence(std::span<vrt::Dag::Node> node_sequence)
-{
-    vrt::u64 hash = 0xcbf29ce484222325;
-    for (const auto node : node_sequence)
-    {
-        for (int i = 0; i < 64; i += 8)
-        {
-            hash ^= (node.raw >> i) & 0xFF;
-            hash *= 0x00000100000001b3;
-        }
-    }
-    return hash;
-}
-
-vrt::u32 vrt::Dag::insert_node(std::span<Node> node_sequence)
-{
-    const u32 K = node_sequence.size();
-    u64 hash = hash_node_sequence(node_sequence);
-
-    // check if sequence exists
-    auto range = node_indices_.equal_range(hash);
-    auto vec_span = std::span{ nodes_ };
-
-    for (auto it = range.first; it != range.second; ++it)
-    {
-        if (it->second + K > vec_span.size()) continue;
-        auto vec_subspan = vec_span.subspan(it->second, K);
-        if (std::ranges::equal(node_sequence, vec_subspan))
-        {
-            return it->second;
-        }
-    }
-
-    // didn't found
-    int max_overlap = std::min<int>(K - 1, vec_span.size());
-    int overlap_size = 0;
-
-    // check for overlaps on end
-    for (int n = max_overlap; n > 0; n--)
-    {
-        if (std::ranges::equal(vec_span.last(n), node_sequence.first(n)))
-        {
-            overlap_size = n;
-            break;
-        }
-    }
-
-    u32 return_index = nodes_.size() - overlap_size;
-    u32 old_size = nodes_.size();
-
-    nodes_.insert(nodes_.end(), node_sequence.begin() + overlap_size, node_sequence.end());
-    u32 new_size = nodes_.size();
-
-    for (u32 end_idx = old_size; end_idx < new_size; end_idx++)
-    {
-        // how far back can we look
-        u32 max_backtrack = std::min<u32>(8, end_idx + 1);
-
-        // build and hash sequences ending at end_idx with growing lengths
-        for (u32 seq_len = 1; seq_len <= max_backtrack; seq_len++)
-        {
-            u32 start_idx = end_idx - seq_len + 1;
-
-            // extract the exact sub_sequence and calculate its hash
-            auto sub_sequence = std::span{ nodes_ }.subspan(start_idx, seq_len);
-            u64 hash = hash_node_sequence(sub_sequence);
-
-            node_indices_.insert({ hash, start_idx });
-        }
-    }
-
-    return return_index;
-}
-
-static vrt::u32 shape_terrain(const glm::vec3& pos)
-{
-    float surface_height = std::sin(pos.x * 0.05f) * std::cos(pos.z * 0.05f) * 20.0f;
-
-    return pos.y <= surface_height ? 1 : 0;
-}
-
-static vrt::u32 shape_gyroid(const glm::vec3& pos)
-{
-    glm::vec3 p = pos * 0.5f;
-
-
-    float val = std::sin(p.x) * std::cos(p.y) +
-        std::sin(p.y) * std::cos(p.z) +
-        std::sin(p.z) * std::cos(p.x);
-
-    return (val > -0.3f && val < 0.3f) ? 1 : 0;
-}
-
-static vrt::u32 shape_solid_sphere(const glm::vec3& pos)
-{
-    const float radius = 80.0f;
-    return glm::length(pos) <= radius ? 1 : 0;
-}
-
-static std::optional<vrt::Dag::Voxel> get_voxel(glm::vec3 pos)
-{
-    if (shape_gyroid(pos) == 1)
-    {
-        // 1. Zabezpieczenie przed (0,0,0), żeby normalize() nie zwróciło NaN
-        glm::vec3 n = (pos == glm::vec3(0.0f)) ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::normalize(pos);
-
-        // 2. Mapowanie wektora z zakresu [-1.0, 1.0] na kolory [0, 255]
-        vrt::u8 r = static_cast<vrt::u8>((n.x + 1.0f) * 0.5f * 255.0f);
-        vrt::u8 b = static_cast<vrt::u8>((n.y + 1.0f) * 0.5f * 255.0f); // Oś Y jako niebieski (Twoje życzenie)
-        vrt::u8 g = static_cast<vrt::u8>((n.z + 1.0f) * 0.5f * 255.0f); // Oś Z jako zielony (Twoje życzenie)
-
-        // 3. Wpisujemy do unii z wykorzystaniem struktury RGBE
-        vrt::Dag::Voxel v;
-        v.r = r;
-        v.g = g;
-        v.b = b;
-        v.e = 0; // Kanał dodatkowy/Alpha ustawiamy na 0
-
-        return v;
-    }
-    return std::nullopt;
-}
-
-std::optional<vrt::Dag::Node> vrt::Dag::build(u8 depth, const glm::vec3& center, const std::function<std::optional<Voxel>(glm::vec3)>& sampler)
-{
-    u32 half_size = 1u << depth;
-    float offset = half_size * 0.5f;
-
-    const glm::vec3 offsets[8] = {
-        {-offset, -offset, -offset },
-        { offset, -offset, -offset },
-        {-offset,  offset, -offset },
-        { offset,  offset, -offset },
-        {-offset, -offset,  offset },
-        { offset, -offset,  offset },
-        {-offset,  offset,  offset },
-        { offset,  offset,  offset }
-    };
-
-    if (depth == 0)
-    {
-        std::array<Voxel, 8> leaves;
-        u8 mask = 0;
-
-        for (int i = 0; i < 8; i++)
-        {
-            glm::vec3 pos = center + offsets[i];
-
-            // TUTAJ ZMIANA: Używamy wstrzykniętej funkcji zamiast sztywnego get_voxel()
-            std::optional<Voxel> opt_voxel = sampler(pos);
-
-            if (opt_voxel.has_value())
-            {
-                leaves[i] = opt_voxel.value();
-                mask |= (1u << i);
-            }
-        }
-
-        if (mask == 0) return std::nullopt;
-
-        return add_leaf(leaves, mask);
-    }
-    else
-    {
-        std::array<Node, 8> children;
-        u8 mask = 0;
-        for (int i = 0; i < 8; ++i)
-        {
-            glm::vec3 pos = center + offsets[i];
-
-            // TUTAJ ZMIANA: Przekazujemy sampler oczko niżej do kolejnego wywołania rekurencyjnego!
-            std::optional<Node> opt_child = build(depth - 1, pos, sampler);
-
-            if (opt_child.has_value())
-            {
-                children[i] = opt_child.value();
-                mask |= (1u << i);
-            }
-        }
-
-        if (mask == 0) return std::nullopt;
-
-        return add_node(children, mask);
-    }
-}
 
 struct StackFrame
 {
@@ -402,7 +19,8 @@ struct StackFrame
     vrt::u8 oct_idx;
 };
 
-vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) const noexcept
+vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth,
+    const Node& root) const noexcept
 {
     constexpr float INF = std::numeric_limits<float>::infinity();
 
@@ -411,9 +29,24 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
     glm::vec3 invD = ray.direction_inverse;
     std::uint8_t a = 0; // axis inversion mask
 
-    if (invD.x < 0.0f) { O.x = -O.x; invD.x = -invD.x; a |= 1; }
-    if (invD.y < 0.0f) { O.y = -O.y; invD.y = -invD.y; a |= 2; }
-    if (invD.z < 0.0f) { O.z = -O.z; invD.z = -invD.z; a |= 4; }
+    if (invD.x < 0.0f)
+    {
+        O.x = -O.x;
+        invD.x = -invD.x;
+        a |= 1;
+    }
+    if (invD.y < 0.0f)
+    {
+        O.y = -O.y;
+        invD.y = -invD.y;
+        a |= 2;
+    }
+    if (invD.z < 0.0f)
+    {
+        O.z = -O.z;
+        invD.z = -invD.z;
+        a |= 4;
+    }
 
     float t_enter = 0.0f;
     float t_exit = INF;
@@ -444,8 +77,15 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
     {
         float best = t0x;
         last_axis = 0;
-        if (t0y > best) { best = t0y; last_axis = 1; }
-        if (t0z > best) { last_axis = 2; }
+        if (t0y > best)
+        {
+            best = t0y;
+            last_axis = 1;
+        }
+        if (t0z > best)
+        {
+            last_axis = 2;
+        }
     }
 
     StackFrame stack[32];
@@ -455,15 +95,17 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
 
     float half = root_half;
 
+    // Czas przejścia promienia przez środek korzenia wzdłuż każdej osi
     float txm = (-O.x) * invD.x;
     float tym = (-O.y) * invD.y;
     float tzm = (-O.z) * invD.z;
 
-    std::uint8_t oct_idx =
-        (std::uint8_t(txm <= t_enter) << 0) |
+    // Startowy oktant: bit=1 jeśli środek węzła jest już za nami na danej osi
+    std::uint8_t oct_idx = (std::uint8_t(txm <= t_enter) << 0) |
         (std::uint8_t(tym <= t_enter) << 1) |
         (std::uint8_t(tzm <= t_enter) << 2);
 
+    // Czas wyjścia z bieżącego oktantu wzdłuż każdej osi (INF jeśli już przekroczony)
     float tx = (txm > t_enter) ? txm : INF;
     float ty = (tym > t_enter) ? tym : INF;
     float tz = (tzm > t_enter) ? tzm : INF;
@@ -474,13 +116,19 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
         if (current_node.is_leaf())
         {
             glm::vec3 n{ 0.f, 0.f, 0.f };
-            if (last_axis == 0) n.x = -1.f;
-            else if (last_axis == 1) n.y = -1.f;
-            else                     n.z = -1.f;
+            if (last_axis == 0)
+                n.x = -1.f;
+            else if (last_axis == 1)
+                n.y = -1.f;
+            else
+                n.z = -1.f;
 
-            if (a & 1) n.x = -n.x;
-            if (a & 2) n.y = -n.y;
-            if (a & 4) n.z = -n.z;
+            if (a & 1)
+                n.x = -n.x;
+            if (a & 2)
+                n.y = -n.y;
+            if (a & 4)
+                n.z = -n.z;
 
             return { .t = t_enter, .normal = n, .voxel = current_node.voxel };
         }
@@ -496,11 +144,13 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
             std::uint32_t child_index = current_node.index + offset;
 
             // 2. SCHODZENIE W DÓŁ
-            if (depth > 0)
+            if (depth > 1)
             {
                 float t_next = tx;
-                if (ty < t_next) t_next = ty;
-                if (tz < t_next) t_next = tz;
+                if (ty < t_next)
+                    t_next = ty;
+                if (tz < t_next)
+                    t_next = tz;
 
                 const float child_t_exit = (t_exit < t_next) ? t_exit : t_next;
 
@@ -518,8 +168,7 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
                 t_exit = child_t_exit;
                 --depth;
 
-                oct_idx =
-                    (std::uint8_t(txm <= t_enter) << 0) |
+                oct_idx = (std::uint8_t(txm <= t_enter) << 0) |
                     (std::uint8_t(tym <= t_enter) << 1) |
                     (std::uint8_t(tzm <= t_enter) << 2);
 
@@ -535,13 +184,19 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
                 Voxel v = leaves_[child_index];
 
                 glm::vec3 n{ 0.f, 0.f, 0.f };
-                if (last_axis == 0) n.x = -1.f;
-                else if (last_axis == 1) n.y = -1.f;
-                else                     n.z = -1.f;
+                if (last_axis == 0)
+                    n.x = -1.f;
+                else if (last_axis == 1)
+                    n.y = -1.f;
+                else
+                    n.z = -1.f;
 
-                if (a & 1) n.x = -n.x;
-                if (a & 2) n.y = -n.y;
-                if (a & 4) n.z = -n.z;
+                if (a & 1)
+                    n.x = -n.x;
+                if (a & 2)
+                    n.y = -n.y;
+                if (a & 4)
+                    n.z = -n.z;
 
                 return { .t = t_enter, .normal = n, .voxel = v };
             }
@@ -552,8 +207,16 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
         {
             int axis = 0;
             float t_next = tx;
-            if (ty < t_next) { t_next = ty; axis = 1; }
-            if (tz < t_next) { t_next = tz; axis = 2; }
+            if (ty < t_next)
+            {
+                t_next = ty;
+                axis = 1;
+            }
+            if (tz < t_next)
+            {
+                t_next = tz;
+                axis = 2;
+            }
 
             // POP (Wyjście z obecnego sześcianu)
             if (t_next > t_exit)
@@ -582,9 +245,12 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
 
             // ADVANCE (Krok do kolejnego oktantu wewnątrz ojca)
             oct_idx |= std::uint8_t(1u << axis);
-            if (axis == 0) tx = INF;
-            else if (axis == 1) ty = INF;
-            else                tz = INF;
+            if (axis == 0)
+                tx = INF;
+            else if (axis == 1)
+                ty = INF;
+            else
+                tz = INF;
 
             t_enter = t_next;
             last_axis = static_cast<std::uint8_t>(axis);
@@ -593,3 +259,480 @@ vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth, const Node& root) co
     }
 }
 
+template <typename T> inline size_t hash_memory(const T& val)
+{
+    return std::hash<std::string_view>{}(
+        std::string_view(reinterpret_cast<const char*>(&val), sizeof(T)));
+}
+
+template <typename T> struct TempNode
+{
+    vrt::u8 mask;
+    std::vector<T> elements;
+
+    TempNode()
+    {
+        mask = 0;
+        elements.reserve(8);
+    }
+
+    void add(vrt::u8 octant, const T& element)
+    {
+        mask |= (1 << octant);
+        elements.push_back(element);
+    }
+
+    void clear()
+    {
+        mask = 0;
+        elements.clear();
+    }
+
+    bool is_empty() const { return mask == 0; }
+};
+
+// Kołowy bufor ostatnich pozycji danego elementu w target_buffer.
+// Używany przez sliding window search jako punkt startowy przeszukiwania.
+struct PosHistory
+{
+    static constexpr int CAP = 32; // Ile ostatnich pozycji danego elementu pamiętamy
+    int positions[CAP];
+    std::uint8_t head = 0;
+    std::uint8_t count = 0;
+
+    void add(int pos)
+    {
+        positions[head] = pos;
+        head = (head + 1) % CAP;
+        if (count < CAP)
+            count++;
+    }
+};
+
+// Clock Cache (Second-Chance) — lepsza retencja często używanych wpisów niż LRU.
+// Wpis z used=true dostaje "drugą szansę": bit jest czyszczony zamiast eksmisji.
+// Brak linked-list, wskazówka (hand) obraca się przez pool. O(1) amortyzowany.
+// Idealny dla DAG build: globalnie często używane wzorce węzłów przeżywają dłużej.
+template <typename Key, typename Value>
+class ClockCache
+{
+private:
+    struct Slot
+    {
+        Key   key = {};
+        Value value = {};
+        bool  used = false;
+    };
+
+    std::vector<Slot>            pool;
+    std::unordered_map<Key, int> map;
+    int    hand = 0;   // wskazówka zegara
+    int    size_used = 0;
+    size_t cap;
+
+    // Znajdź wolny slot lub wyeksmituj przez algorytm Clock
+    int evict_or_alloc()
+    {
+        if (size_used < static_cast<int>(cap))
+        {
+            // Jeszcze jest wolne miejsce — wstaw kolejno
+            int idx = size_used++;
+            return idx;
+        }
+
+        // Cache pełny — obracaj wskazówką
+        while (true)
+        {
+            Slot& s = pool[hand];
+            if (!s.used)
+            {
+                // Drugi raz tutaj bez użycia — eksmituj
+                map.erase(s.key);
+                int idx = hand;
+                hand = (hand + 1) % static_cast<int>(cap);
+                return idx;
+            }
+            // Daj drugą szansę
+            s.used = false;
+            hand = (hand + 1) % static_cast<int>(cap);
+        }
+    }
+
+public:
+    explicit ClockCache(size_t limit = 5000000) : cap(limit)
+    {
+        pool.resize(cap);
+        map.reserve(cap);
+    }
+
+    ClockCache(ClockCache&&) = default;
+    ClockCache& operator=(ClockCache&&) = default;
+    ClockCache(const ClockCache&) = delete;
+    ClockCache& operator=(const ClockCache&) = delete;
+
+    Value* get(const Key& key)
+    {
+        auto it = map.find(key);
+        if (it == map.end()) return nullptr;
+        pool[it->second].used = true;
+        return &pool[it->second].value;
+    }
+
+    void put(const Key& key, const Value& val)
+    {
+        auto it = map.find(key);
+        if (it != map.end())
+        {
+            pool[it->second].value = val;
+            pool[it->second].used = true;
+            return;
+        }
+
+        int idx = evict_or_alloc();
+        pool[idx].key = key;
+        pool[idx].value = val;
+        pool[idx].used = true;
+        pool[idx].valid = true;
+        map[key] = idx;
+    }
+};
+
+inline void hash_combine(size_t& seed, size_t hash_val)
+{
+    seed ^= hash_val + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
+template <typename T>
+vrt::Dag::Node
+insert_with_sliding_window(const TempNode<T>& temp,
+    std::vector<T>& target_buffer,
+    ClockCache<size_t, PosHistory>& index_cache,
+    ClockCache<size_t, vrt::Dag::Node>& memo_cache)
+{
+    int N = temp.elements.size();
+    if (N == 0)
+        return { 0 };
+    if (N > 8)
+        throw std::runtime_error("CRITICAL FATAL ERROR: TempNode N > 8!");
+
+    size_t temp_hash = std::hash<uint8_t>{}(temp.mask);
+    for (int e = 0; e < N; ++e)
+    {
+        hash_combine(temp_hash, hash_memory(temp.elements[e]));
+    }
+
+    vrt::Dag::Node* cached_node = memo_cache.get(temp_hash);
+    if (cached_node != nullptr)
+    {
+        return *cached_node;
+    }
+
+    bool found_match = false;
+    int best_index = -1;
+    int best_offsets[8] = { 0 };
+
+    // Szukamy okna w buforze, w którym wszystkie elementy temp już istnieją.
+    // Zaczynamy od znanych pozycji pierwszego elementu (z index_cache), by nie
+    // skanować całego bufora. Dla każdej kandydackiej pozycji sprawdzamy okno
+    // o rozmiarze do 8 — jeśli zawiera wszystkie N elementów, możemy je reużyć.
+    PosHistory* history = index_cache.get(hash_memory(temp.elements[0]));
+    if (history != nullptr)
+    {
+        for (int h = 0; h < history->count; ++h)
+        {
+            int pos = history->positions[h];
+            int start_i = std::max(0, pos - 7);
+
+            for (int i = start_i; i <= pos; ++i)
+            {
+                int window_size = std::min(8, (int)(target_buffer.size() - i));
+                if (window_size < N)
+                    continue;
+
+                bool window_has_all = true;
+                int current_offsets[8] = { 0 };
+
+                // Sprawdź, czy każdy element temp mieści się gdzieś w oknie
+                for (int e = 0; e < N; ++e)
+                {
+                    bool found_e = false;
+                    for (int w = 0; w < window_size; ++w)
+                    {
+                        if (temp.elements[e] == target_buffer[i + w])
+                        {
+                            current_offsets[e] = w;
+                            found_e = true;
+                            break;
+                        }
+                    }
+                    if (!found_e)
+                    {
+                        window_has_all = false;
+                        break;
+                    }
+                }
+
+                if (window_has_all)
+                {
+                    found_match = true;
+                    best_index = i;
+                    for (int e = 0; e < N; ++e)
+                        best_offsets[e] = current_offsets[e];
+                    break;
+                }
+            }
+            if (found_match)
+                break;
+        }
+    }
+
+    vrt::Dag::Node final_node;
+    final_node.descriptor = 0;
+
+    if (found_match)
+    {
+        final_node.index = best_index;
+        int active_idx = 0;
+        for (int i = 0; i < 8; ++i)
+        {
+            if (temp.mask & (1 << i))
+            {
+                final_node.set_child_offset(i, best_offsets[active_idx]);
+                active_idx++;
+            }
+        }
+    }
+    else
+    {
+        // 1. Szukamy nakładania się początków na koniec (Prefix-Suffix Overlap)
+        int overlap = 0;
+        int max_possible_overlap = std::min(N, (int)target_buffer.size());
+
+        for (int o = max_possible_overlap; o > 0; --o)
+        {
+            bool match = true;
+            for (int i = 0; i < o; ++i)
+            {
+                // Używamy negacji operatora ==, żeby nie wymagać istnienia operatora !=
+                // w strukturze Node/Voxel
+                if (!(target_buffer[target_buffer.size() - o + i] ==
+                    temp.elements[i]))
+                {
+                    match = false;
+                    break;
+                }
+            }
+            if (match)
+            {
+                overlap = o;
+                break;
+            }
+        }
+
+        // 2. Ustawiamy base_index na początek nakładającej się części w buforze
+        final_node.index = target_buffer.size() - overlap;
+
+        // 3. Dodajemy na koniec tylko te elementy, których nam brakuje
+        for (int e = overlap; e < N; ++e)
+        {
+            target_buffer.push_back(temp.elements[e]);
+
+            // Aktualizacja naszego EpochCache:
+            PosHistory hist;
+            PosHistory* existing = index_cache.get(hash_memory(temp.elements[e]));
+            if (existing)
+                hist = *existing;
+            hist.add(target_buffer.size() - 1);
+            index_cache.put(hash_memory(temp.elements[e]), hist);
+        }
+
+        // 4. Przypisujemy idealnie liniowe, gwarantowanie DODATNIE offsety
+        int active_idx = 0;
+        for (int i = 0; i < 8; ++i)
+        {
+            if (temp.mask & (1 << i))
+            {
+                final_node.set_child_offset(i, active_idx);
+                active_idx++;
+            }
+        }
+    }
+
+    memo_cache.put(temp_hash, final_node);
+    return final_node;
+}
+
+vrt::Dag::Node vrt::Dag::build(u8 depth,
+    const std::filesystem::path& filepath)
+{
+    if (!std::filesystem::exists(filepath))
+    {
+        throw std::runtime_error("Error: vrt::Dag::build filepath doesn't exist.");
+    }
+
+    std::ifstream file(filepath, std::ios::binary);
+    size_t cache_limit = 500000;
+
+    ClockCache<size_t, PosHistory> leaf_index_cache(cache_limit);
+    ClockCache<size_t, Node> leaf_memo_cache(cache_limit);
+
+    std::vector<ClockCache<size_t, PosHistory>> node_index_caches;
+    std::vector<ClockCache<size_t, Node>> node_memo_caches;
+    node_index_caches.reserve(depth);
+    node_memo_caches.reserve(depth);
+    for (int i = 0; i < depth; ++i)
+    {
+        node_index_caches.emplace_back(cache_limit / 4);
+        node_memo_caches.emplace_back(cache_limit / 4);
+    }
+
+    std::vector<TempNode<Node>> temp_nodes(depth);
+    TempNode<Voxel> temp_leaf;
+
+    leaves_.clear();
+    nodes_.clear();
+
+    std::vector<std::vector<Node>> level_nodes(depth);
+
+#pragma pack(push, 1)
+    struct VoxelData
+    {
+        u64 morton;
+        Voxel voxel;
+    };
+#pragma pack(pop)
+
+    VoxelData voxel_data;
+    size_t total_voxels =
+        std::filesystem::file_size(filepath) / sizeof(VoxelData);
+    size_t processed_voxels = 0;
+
+    auto calculate_divergence = [](u64 morton_a, u64 morton_b) -> int
+        {
+            u64 diff = morton_a ^ morton_b;
+            if (diff == 0)
+                return 0;
+            return (63 - std::countl_zero(diff)) / 3;
+        };
+
+    auto insert_leaf = [&](TempNode<Voxel>& leaves) -> Node
+        {
+            return insert_with_sliding_window(leaves, leaves_, leaf_index_cache,
+                leaf_memo_cache);
+        };
+
+    auto insert_node = [&](TempNode<Node>& nodes, int level) -> Node
+        {
+            return insert_with_sliding_window(nodes, level_nodes[level],
+                node_index_caches[level],
+                node_memo_caches[level]);
+        };
+
+    if (!file.read(reinterpret_cast<char*>(&voxel_data), sizeof(VoxelData)))
+        return Node{};
+    processed_voxels++;
+
+    u64 last_morton = voxel_data.morton;
+    temp_leaf.add(last_morton & 0b111, voxel_data.voxel);
+
+    while (file.read(reinterpret_cast<char*>(&voxel_data), sizeof(VoxelData)))
+    {
+        processed_voxels++;
+        if (processed_voxels % 10000 == 0)
+        {
+            double percent =
+                (static_cast<double>(processed_voxels) * 100.0) / total_voxels;
+            std::print("\rProcessed voxels: {}/{} [{:.2f}%]", processed_voxels,
+                total_voxels, percent);
+        }
+
+        if ((last_morton >> 3) == (voxel_data.morton >> 3))
+        {
+            temp_leaf.add(voxel_data.morton & 0b111, voxel_data.voxel);
+        }
+        else
+        {
+            Node node = insert_leaf(temp_leaf);
+            temp_leaf.clear();
+
+            int current_level = 0;
+            temp_nodes[current_level].add((last_morton >> 3) & 0b111, node);
+
+            int max_level = calculate_divergence(last_morton, voxel_data.morton);
+            max_level = std::min(max_level, (int)depth - 1);
+
+            while (current_level < max_level - 1)
+            {
+                node = insert_node(temp_nodes[current_level], current_level);
+                temp_nodes[current_level].clear();
+                ++current_level;
+
+                if (current_level >= depth)
+                    break;
+
+                u8 parent_octant = (last_morton >> (3 * (current_level + 1))) & 0b111;
+                temp_nodes[current_level].add(parent_octant, node);
+            }
+
+            temp_leaf.add(voxel_data.morton & 0b111, voxel_data.voxel);
+        }
+
+        last_morton = voxel_data.morton;
+    }
+
+    if (!temp_leaf.is_empty())
+    {
+        Node node = insert_leaf(temp_leaf);
+        temp_leaf.clear();
+        temp_nodes[0].add((last_morton >> 3) & 0b111, node);
+    }
+
+    // Domknięcie drzewa: przepychamy niezamknięte węzły od dołu do góry.
+    // Po przetworzeniu wszystkich wokseli mogą zostać niepuste temp_nodes
+    // na każdym poziomie — każdy musi zostać wstawiony i przekazany wyżej.
+    for (int current_level = 0; current_level < depth; ++current_level)
+    {
+        if (!temp_nodes[current_level].is_empty())
+        {
+            Node node = insert_node(temp_nodes[current_level], current_level);
+            temp_nodes[current_level].clear();
+
+            if (current_level + 1 < depth)
+            {
+                int parent_octant = (last_morton >> (3 * (current_level + 2))) & 0b111;
+                temp_nodes[current_level + 1].add(parent_octant, node);
+            }
+        }
+    }
+
+    size_t total_topology_nodes = 0;
+    std::vector<size_t> level_offsets(depth, 0);
+
+    for (int d = 0; d < depth; ++d)
+    {
+        level_offsets[d] = total_topology_nodes;
+        total_topology_nodes += level_nodes[d].size();
+    }
+
+    nodes_.reserve(total_topology_nodes);
+
+    // Scalamy wszystkie poziomy do jednej płaskiej tablicy nodes_.
+    // Węzły były budowane per-poziom z lokalnymi indeksami — tu dodajemy
+    // globalny offset, by każdy węzeł wskazywał poprawny index w nodes_.
+    for (int d = 0; d < depth; ++d)
+    {
+        for (const Node& node : level_nodes[d])
+        {
+            Node patched_node = node;
+
+            if (d > 0)
+            {
+                patched_node.index += level_offsets[d - 1];
+            }
+
+            nodes_.push_back(patched_node);
+        }
+    }
+
+    return nodes_.empty() ? Node{} : nodes_.back();
+}

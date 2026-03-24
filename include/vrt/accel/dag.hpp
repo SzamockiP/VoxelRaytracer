@@ -9,6 +9,7 @@
 #include <print>
 #include <vrt/math/ray.hpp>
 #include <functional>
+#include <filesystem>
 
 namespace vrt
 {
@@ -50,7 +51,17 @@ namespace vrt
                 return raw == other.raw;
             }
 
-            const bool is_leaf() const { return index & (1u << 31); }
+            bool is_leaf() const { return index & (1u << 31); }
+
+            void set_child_offset(int octant, u32 offset)
+            {
+                // Bit 3 (0x8) to flaga validacji — sygnalizuje że oktant jest zajęty.
+                // Bity 0-2 (0x7) to offset dziecka względem base index węzła (0-7).
+                u32 safe_offset = (offset & 0x7) | 0x8;
+
+                descriptor &= ~(0xF << (octant * 4));
+                descriptor |= (safe_offset << (octant * 4));
+            }
         };
 
         struct Hit
@@ -60,13 +71,10 @@ namespace vrt
             Voxel voxel;
         };
 
-        const std::vector<Node>& nodes() { return nodes_; }
-        const std::vector<Voxel>& leaves() { return leaves_; }
+        const std::vector<Node>& nodes() const { return nodes_; }
+        const std::vector<Voxel>& leaves() const { return leaves_; }
 
-        Node add_node(const std::array<Node, 8>& node, u8 mask);
-        Node add_leaf(const std::array<Voxel, 8>& leaf, u8 mask);
-
-        std::optional<Node> build(u8 depth, const glm::vec3& center, const std::function<std::optional<Voxel>(glm::vec3)>& sampler);
+        Node build(u8 depth, const std::filesystem::path& filepath);
 
         Hit intersect(const Ray& ray, u8 depth, const Node& root) const noexcept;
 
@@ -83,11 +91,5 @@ namespace vrt
     private:
         std::vector<Node>  nodes_;
         std::vector<Voxel> leaves_;
-
-        std::unordered_multimap<u64, u32> node_indices_;
-        std::unordered_multimap<u64, u32> leaf_indices_;
-
-        u32 insert_leaf(std::span<Voxel> voxel_sequence);
-        u32 insert_node(std::span<Node> node_sequence);
     };
 }

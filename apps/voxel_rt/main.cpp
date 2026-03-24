@@ -1,4 +1,4 @@
-﻿#include <print>
+#include <print>
 #include <cmath>
 #include <algorithm>
 #include <GLFW/glfw3.h>
@@ -16,8 +16,6 @@
 #include <vrt/gfx/presenter.hpp>
 
 #include <vrt/accel/dag.hpp>
-
-#include <vrt/voxel/voxel_model.hpp>
 
 using namespace vrt;
 
@@ -39,11 +37,11 @@ void processInput(const Window& window, Camera& camera, float dt)
 
 int main()
 {
+    const int tree_depth = 11;
+
     const int window_width = 1280;
     const int window_height = 720;
 
-    //const int resolution_width = 192;
-    //const int resolution_height = 108;
     const int resolution_width = 320;
     const int resolution_height = 180;
 
@@ -51,32 +49,26 @@ int main()
     Presenter presenter{ resolution_width, resolution_height };
     Buffer2D<glm::vec3> color_buffer{ resolution_width,resolution_height };
 
+    // Pozycja startowa i speed kamery = 2^(depth-4), czyli ~1/16 rozmiaru sceny
+    const float cam_scale = static_cast<float>(1u << std::max(0, tree_depth - 4));
     Camera camera{
         static_cast<float>(resolution_width) / resolution_height,
         glm::radians(120.f),
-        -90.f, 0, glm::vec3{80},
+        -90.f,
+        0,
+        cam_scale,
+        glm::vec3{ cam_scale }
     };
-    VoxelModel my_model;
 
-    if (!my_model.load_obj("san-miguel-low-poly.obj", 1024))
-    {
-        return -1;
-    }
-    
     vrt::Dag dag;
-    auto root = dag.build(10, glm::vec3(0.0f), [&my_model](glm::vec3 pos)
-    {
-        return my_model.sample(pos);
-    });
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/2048.bin");
 
-    if (!root.has_value())
+    if (root.descriptor == 0)
     {
         std::cerr << "Blad: DAG jest pusty!\n";
         return -1;
     }
 
-    my_model.grid.clear();
-    my_model.grid.shrink_to_fit();
     dag.debug();
 
     float current_frame_time = 0.0f;
@@ -100,45 +92,32 @@ int main()
 
         camera.process_mouse_movement(dx, dy);
 
-        //#pragma omp parallel for schedule(dynamic, 1)
+        #pragma omp parallel for schedule(dynamic, 1)
         for (int y = 0; y < resolution_height; ++y)
         {
             for (int x = 0; x < resolution_width; ++x)
             {
+                // Mapowanie piksela na NDC [-1, 1] (v odwrócone: góra ekranu = +1)
                 float u = (float(x) / resolution_width) * 2 - 1;
                 float v = 1.0f - (float(y) / resolution_height) * 2.0f;
 
                 glm::vec3 d = normalize(camera.get_ray(u, v).direction);
                 Ray r{ camera.position(), d, 1.0f / d };
-                Dag::Hit result = dag.intersect(r, 10, root.value());
+                Dag::Hit result = dag.intersect(r, tree_depth, root);
 
-                // Jeśli promień uciekł w pustkę (nie trafił w nic)
                 if (result.t == std::numeric_limits<float>::infinity())
                 {
-                    // Rysujemy tło (np. ciemnoszare / lekko niebieskie)
                     color_buffer(x, y) = glm::vec3{ 0.1f, 0.1f, 0.15f };
                 }
                 else
                 {
-                    // 1. ODKODOWANIE KOLORU z unii Voxel (u8 na floaty 0.0-1.0)
                     glm::vec3 base_color{
                         result.voxel.r / 255.0f,
                         result.voxel.g / 255.0f,
                         result.voxel.b / 255.0f
                     };
 
-                    // 2. OŚWIETLENIE (tylko słońce i ambient, zero mgły)
-                    glm::vec3 light_dir = normalize(glm::vec3{ 5.0f, 10.0f, 8.0f });
-
-                    // Obliczamy jak bardzo normalna jest odwrócona do światła (0.0 to cień, 1.0 to pełne słońce)
-                    float diffuse = std::max(dot(result.normal, light_dir), 0.0f);
-
-                    // Ambient - żeby w cieniu cokolwiek było widać (zmień na 0.0f, jeśli chcesz absolutny mrok w cieniu)
-                    float ambient = 0.15f;
-                    float lightness = std::clamp(diffuse + ambient, 0.0f, 1.0f);
-
-                    // 3. KOMPOZYCJA
-                    color_buffer(x, y) = base_color * lightness;
+                    color_buffer(x, y) = base_color;
                 }
             }
         }
@@ -149,7 +128,8 @@ int main()
         frame_count++;
         float time = (glfwGetTime() - start_frame) / frame_count;
 
-        window.set_window_title("fps/ms: " + std::to_string(1.0f / delta_time) + "/" + std::to_string(delta_time * 1000) +
-            "avg fps/ms: " + std::to_string(1.0f / time) + "/" + std::to_string(time  * 1000));
+        window.set_window_title(
+            "fps/ms: " + std::to_string(1.0f / delta_time) + "/" + std::to_string(delta_time * 1000) + "  |  " +
+            "avg fps/ms: " + std::to_string(1.0f / time) + "/" + std::to_string(time * 1000));
     }
 }
