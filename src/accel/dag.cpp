@@ -262,57 +262,134 @@ struct PosHistory
     }
 };
 
-// LRU Cache oparty o generation counter. Każdy wpis ma timestamp ostatniego dostępu.
-// Eviction wyrzuca wpis z najniższym timestampem.
-// Unikamy iteratorów list jako typów pól — brak problemów z nested templates w clangd.
+// LRU Cache O(1) — własna doubly-linked lista z raw pointerami.
+// unordered_map<Key, Node*> — brak nested template iteratora jako pola (clangd-friendly).
+// Eviction, get i put są wszystkie O(1).
 template <typename Key, typename Value>
 class LruCache
 {
 private:
-    struct Entry
+    struct Node
     {
-        Value         value;
-        std::uint64_t last_used = 0;
+        Key   key;
+        Value value;
+        Node* prev;
+        Node* next;
+
+        Node(const Key& k, const Value& v)
+            : key(k), value(v), prev(nullptr), next(nullptr) {}
     };
 
-    std::unordered_map<Key, Entry> table;
-    std::uint64_t clock = 0;
-    size_t        cap;
+    // head = MRU, tail = LRU
+    Node* head = nullptr;
+    Node* tail = nullptr;
+    std::unordered_map<Key, Node*> map;
+    size_t cap;
+
+    void detach(Node* n)
+    {
+        if (n->prev) n->prev->next = n->next;
+        else         head = n->next;
+        if (n->next) n->next->prev = n->prev;
+        else         tail = n->prev;
+        n->prev = n->next = nullptr;
+    }
+
+    void push_front(Node* n)
+    {
+        n->next = head;
+        n->prev = nullptr;
+        if (head) head->prev = n;
+        else      tail = n;
+        head = n;
+    }
 
 public:
     explicit LruCache(size_t limit = 5000000) : cap(limit)
     {
-        table.reserve(cap);
+        map.reserve(cap);
+    }
+
+    ~LruCache()
+    {
+        for (Node* n = head; n; )
+        {
+            Node* next = n->next;
+            delete n;
+            n = next;
+        }
+    }
+
+    // Non-copyable
+    LruCache(const LruCache&)            = delete;
+    LruCache& operator=(const LruCache&) = delete;
+
+    // Movable — wymagane przez std::vector
+    LruCache(LruCache&& o) noexcept
+        : head(o.head), tail(o.tail), map(std::move(o.map)), cap(o.cap)
+    {
+        o.head = o.tail = nullptr;
+    }
+
+    LruCache& operator=(LruCache&& o) noexcept
+    {
+        if (this != &o)
+        {
+            // Zniszcz obecne węzły
+            for (Node* n = head; n; )
+            {
+                Node* next = n->next;
+                delete n;
+                n = next;
+            }
+            head = o.head; tail = o.tail;
+            map  = std::move(o.map);
+            cap  = o.cap;
+            o.head = o.tail = nullptr;
+        }
+        return *this;
     }
 
     Value* get(const Key& key)
     {
-        auto it = table.find(key);
-        if (it == table.end()) return nullptr;
-        it->second.last_used = ++clock;
-        return &(it->second.value);
+        auto it = map.find(key);
+        if (it == map.end()) return nullptr;
+        Node* n = it->second;
+        if (n != head)
+        {
+            detach(n);
+            push_front(n);
+        }
+        return &(n->value);
     }
 
     void put(const Key& key, const Value& val)
     {
-        auto it = table.find(key);
-        if (it != table.end())
+        auto it = map.find(key);
+        if (it != map.end())
         {
-            it->second.value     = val;
-            it->second.last_used = ++clock;
+            Node* n = it->second;
+            n->value = val;
+            if (n != head)
+            {
+                detach(n);
+                push_front(n);
+            }
             return;
         }
 
-        if (table.size() >= cap)
+        if (map.size() >= cap)
         {
-            // Znajdź i wyrzuć LRU — wywołujemy rzadko, OVH jest akceptowalny
-            auto lru = table.begin();
-            for (auto jt = std::next(lru); jt != table.end(); ++jt)
-                if (jt->second.last_used < lru->second.last_used) lru = jt;
-            table.erase(lru);
+            // Wyrzuć LRU (tail) — O(1)
+            Node* lru = tail;
+            detach(lru);
+            map.erase(lru->key);
+            delete lru;
         }
 
-        table[key] = { val, ++clock };
+        Node* n = new Node{ key, val };
+        push_front(n);
+        map[key] = n;
     }
 };
 
@@ -480,8 +557,15 @@ vrt::Dag::Node vrt::Dag::build(u8 depth, const std::filesystem::path& filepath)
     LruCache<size_t, PosHistory> leaf_index_cache(cache_limit);
     LruCache<size_t, Node> leaf_memo_cache(cache_limit);
 
-    std::vector<LruCache<size_t, PosHistory>> node_index_caches(depth, LruCache<size_t, PosHistory>(cache_limit / 4));
-    std::vector<LruCache<size_t, Node>> node_memo_caches(depth, LruCache<size_t, Node>(cache_limit / 4));
+    std::vector<LruCache<size_t, PosHistory>> node_index_caches;
+    std::vector<LruCache<size_t, Node>>       node_memo_caches;
+    node_index_caches.reserve(depth);
+    node_memo_caches.reserve(depth);
+    for (int i = 0; i < depth; ++i)
+    {
+        node_index_caches.emplace_back(cache_limit / 4);
+        node_memo_caches.emplace_back(cache_limit / 4);
+    }
 
     std::vector<TempNode<Node>> temp_nodes(depth);
     TempNode<Voxel> temp_leaf;
