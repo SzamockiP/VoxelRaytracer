@@ -7,6 +7,8 @@
 #include <print>
 #include <string_view>
 #include <unordered_map>
+#include <list>
+#include <cstdint>
 
 struct StackFrame
 {
@@ -247,69 +249,84 @@ struct TempNode
 
 struct PosHistory
 {
-    int positions[4];
+    static constexpr int CAP = 32;
+    int positions[CAP];
     std::uint8_t head = 0;
     std::uint8_t count = 0;
 
     void add(int pos)
     {
         positions[head] = pos;
-        head = (head + 1) % 4;
-        if (count < 4) count++;
+        head = (head + 1) % CAP;
+        if (count < CAP) count++;
     }
 };
 
+// LRU Cache oparty o generation counter. Każdy wpis ma timestamp ostatniego dostępu.
+// Eviction wyrzuca wpis z najniższym timestampem.
+// Unikamy iteratorów list jako typów pól — brak problemów z nested templates w clangd.
 template <typename Key, typename Value>
-class EpochCache
+class LruCache
 {
 private:
-    std::unordered_map<Key, Value> active_map;
-    std::unordered_map<Key, Value> old_map;
-    size_t capacity_limit;
-
-    void check_and_swap()
+    struct Entry
     {
-        if (active_map.size() >= capacity_limit)
-        {
-            old_map = std::move(active_map);
-            active_map.clear();
-        }
-    }
+        Value         value;
+        std::uint64_t last_used = 0;
+    };
+
+    std::unordered_map<Key, Entry> table;
+    std::uint64_t clock = 0;
+    size_t        cap;
 
 public:
-    EpochCache(size_t limit = 5000000) : capacity_limit(limit)
+    explicit LruCache(size_t limit = 5000000) : cap(limit)
     {
-        active_map.reserve(capacity_limit);
+        table.reserve(cap);
     }
 
     Value* get(const Key& key)
     {
-        auto it_active = active_map.find(key);
-        if (it_active != active_map.end()) return &(it_active->second);
-
-        auto it_old = old_map.find(key);
-        if (it_old != old_map.end())
-        {
-            auto [new_it, inserted] = active_map.insert({ key, it_old->second });
-            check_and_swap();
-            return &(new_it->second);
-        }
-        return nullptr;
+        auto it = table.find(key);
+        if (it == table.end()) return nullptr;
+        it->second.last_used = ++clock;
+        return &(it->second.value);
     }
 
     void put(const Key& key, const Value& val)
     {
-        active_map[key] = val;
-        check_and_swap();
+        auto it = table.find(key);
+        if (it != table.end())
+        {
+            it->second.value     = val;
+            it->second.last_used = ++clock;
+            return;
+        }
+
+        if (table.size() >= cap)
+        {
+            // Znajdź i wyrzuć LRU — wywołujemy rzadko, OVH jest akceptowalny
+            auto lru = table.begin();
+            for (auto jt = std::next(lru); jt != table.end(); ++jt)
+                if (jt->second.last_used < lru->second.last_used) lru = jt;
+            table.erase(lru);
+        }
+
+        table[key] = { val, ++clock };
     }
 };
+
+inline void hash_combine(size_t& seed, size_t hash_val)
+{
+    seed ^= hash_val + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
 
 template <typename T>
 vrt::Dag::Node insert_with_sliding_window(
     const TempNode<T>& temp,
     std::vector<T>& target_buffer,
-    EpochCache<size_t, PosHistory>& index_cache,
-    EpochCache<size_t, vrt::Dag::Node>& memo_cache)
+    LruCache<size_t, PosHistory>& index_cache,
+    LruCache<size_t, vrt::Dag::Node>& memo_cache)
 {
     int N = temp.elements.size();
     if (N == 0) return { 0 };
@@ -460,11 +477,11 @@ vrt::Dag::Node vrt::Dag::build(u8 depth, const std::filesystem::path& filepath)
     //size_t cache_limit = 1000000;
     size_t cache_limit = 500000;
 
-    EpochCache<size_t, PosHistory> leaf_index_cache(cache_limit);
-    EpochCache<size_t, Node> leaf_memo_cache(cache_limit);
+    LruCache<size_t, PosHistory> leaf_index_cache(cache_limit);
+    LruCache<size_t, Node> leaf_memo_cache(cache_limit);
 
-    std::vector<EpochCache<size_t, PosHistory>> node_index_caches(depth, EpochCache<size_t, PosHistory>(cache_limit / 4));
-    std::vector<EpochCache<size_t, Node>> node_memo_caches(depth, EpochCache<size_t, Node>(cache_limit / 4));
+    std::vector<LruCache<size_t, PosHistory>> node_index_caches(depth, LruCache<size_t, PosHistory>(cache_limit / 4));
+    std::vector<LruCache<size_t, Node>> node_memo_caches(depth, LruCache<size_t, Node>(cache_limit / 4));
 
     std::vector<TempNode<Node>> temp_nodes(depth);
     TempNode<Voxel> temp_leaf;

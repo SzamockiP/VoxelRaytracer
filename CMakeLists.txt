@@ -37,7 +37,6 @@ add_library(vrt STATIC
 	"src/gfx/window.cpp" 
 	"src/gfx/presenter.cpp" 
 	"src/accel/dag.cpp"
-	"src/voxel/voxel_model.cpp"
 )
 
 target_include_directories(vrt PUBLIC include)
