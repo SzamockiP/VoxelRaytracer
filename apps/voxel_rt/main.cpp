@@ -39,7 +39,7 @@ void processInput(const Window& window, Camera& camera, float dt)
 
 int main()
 {
-    const int tree_depth = 14;
+    const int tree_depth = 12;
 
     const int window_width = 1280;
     const int window_height = 720;
@@ -58,7 +58,8 @@ int main()
         glm::radians(120.f),
         -90.f,
         0,
-        static_cast<float>(1u << std::max(0, tree_depth - 5))
+        static_cast<float>(1u << std::max(0, tree_depth - 4)),
+        glm::vec3{static_cast<float>(1u << std::max(0, tree_depth - 4))}
     };
     /*VoxelModel my_model;
 
@@ -76,7 +77,9 @@ int main()
     vrt::Dag dag;
     //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/4096.bin");
     //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/8192.bin");
-    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/16384.bin");
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/2048.bin");
+    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/1024.bin");
+    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/32768.bin");
 
     if (root.descriptor == 0)
     {
