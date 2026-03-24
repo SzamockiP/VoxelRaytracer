@@ -280,108 +280,93 @@ struct PosHistory {
   }
 };
 
-// LRU Cache — pool-based, bez wskaźników, bez new/delete.
-// Prealokowany vector<Node> + stos wolnych slotów + indeksy int zamiast
-// pointerów. Trivially movable przez default move wektorów.
-template <typename Key, typename Value> class LruCache {
+// Clock Cache (Second-Chance) — lepsza retencja często używanych wpisów niż LRU.
+// Wpis z used=true dostaje "drugą szansę": bit jest czyszczony zamiast eksmisji.
+// Brak linked-list, wskazówka (hand) obraca się przez pool. O(1) amortyzowany.
+// Idealny dla DAG build: globalnie często używane wzorce węzłów przeżywają dłużej.
+template <typename Key, typename Value>
+class ClockCache
+{
 private:
-  static constexpr int NONE = -1;
+    struct Slot
+    {
+        Key   key   = {};
+        Value value = {};
+        bool  used  = false;
+        bool  valid = false;  // czy slot jest zajęty
+    };
 
-  struct Node {
-    Key key = {};
-    Value value = {};
-    int prev = NONE; // indeks w pool; NONE = brak
-    int next = NONE;
-  };
+    std::vector<Slot>            pool;
+    std::unordered_map<Key, int> map;
+    int    hand     = 0;   // wskazówka zegara
+    int    size_used = 0;
+    size_t cap;
 
-  std::vector<Node> pool;           // prealokowana pula slotów
-  std::vector<int> free_list;       // stos wolnych indeksów
-  std::unordered_map<Key, int> map; // key → indeks w pool
-  int head = NONE;                  // indeks MRU
-  int tail = NONE;                  // indeks LRU
-  size_t cap;
+    // Znajdź wolny slot lub wyeksmituj przez algorytm Clock
+    int evict_or_alloc()
+    {
+        if (size_used < static_cast<int>(cap))
+        {
+            // Jeszcze jest wolne miejsce — wstaw kolejno
+            int idx = size_used++;
+            return idx;
+        }
 
-  void detach(int idx) {
-    Node &n = pool[idx];
-    if (n.prev != NONE)
-      pool[n.prev].next = n.next;
-    else
-      head = n.next;
-    if (n.next != NONE)
-      pool[n.next].prev = n.prev;
-    else
-      tail = n.prev;
-    n.prev = n.next = NONE;
-  }
-
-  void push_front(int idx) {
-    Node &n = pool[idx];
-    n.next = head;
-    n.prev = NONE;
-    if (head != NONE)
-      pool[head].prev = idx;
-    else
-      tail = idx;
-    head = idx;
-  }
+        // Cache pełny — obracaj wskazówką
+        while (true)
+        {
+            Slot& s = pool[hand];
+            if (!s.used)
+            {
+                // Drugi raz tutaj bez użycia — eksmituj
+                map.erase(s.key);
+                int idx = hand;
+                hand = (hand + 1) % static_cast<int>(cap);
+                return idx;
+            }
+            // Daj drugą szansę
+            s.used = false;
+            hand = (hand + 1) % static_cast<int>(cap);
+        }
+    }
 
 public:
-  explicit LruCache(size_t limit = 5000000) : cap(limit) {
-    pool.resize(cap);
-    free_list.reserve(cap);
-    map.reserve(cap);
-    // Wypełnij free_list wszystkimi slotami (w odwrotnej kolejności → pop_back
-    // = O(1))
-    for (int i = static_cast<int>(cap) - 1; i >= 0; --i)
-      free_list.push_back(i);
-  }
-
-  // Domyślny move/copy przez wektory
-  LruCache(LruCache &&) = default;
-  LruCache &operator=(LruCache &&) = default;
-  LruCache(const LruCache &) = delete;
-  LruCache &operator=(const LruCache &) = delete;
-
-  Value *get(const Key &key) {
-    auto it = map.find(key);
-    if (it == map.end())
-      return nullptr;
-    int idx = it->second;
-    if (idx != head) {
-      detach(idx);
-      push_front(idx);
-    }
-    return &(pool[idx].value);
-  }
-
-  void put(const Key &key, const Value &val) {
-    auto it = map.find(key);
-    if (it != map.end()) {
-      int idx = it->second;
-      pool[idx].value = val;
-      if (idx != head) {
-        detach(idx);
-        push_front(idx);
-      }
-      return;
+    explicit ClockCache(size_t limit = 5000000) : cap(limit)
+    {
+        pool.resize(cap);
+        map.reserve(cap);
     }
 
-    int idx;
-    if (free_list.empty()) {
-      // Evict LRU (tail) — O(1)
-      idx = tail;
-      detach(idx);
-      map.erase(pool[idx].key);
-    } else {
-      idx = free_list.back();
-      free_list.pop_back();
+    ClockCache(ClockCache&&)            = default;
+    ClockCache& operator=(ClockCache&&) = default;
+    ClockCache(const ClockCache&)            = delete;
+    ClockCache& operator=(const ClockCache&) = delete;
+
+    Value* get(const Key& key)
+    {
+        auto it = map.find(key);
+        if (it == map.end()) return nullptr;
+        pool[it->second].used = true;
+        return &pool[it->second].value;
     }
 
-    pool[idx].key = key;
-    pool[idx].value = val;
-    push_front(idx);
-    map[key] = idx;
-  }
+    void put(const Key& key, const Value& val)
+    {
+        auto it = map.find(key);
+        if (it != map.end())
+        {
+            pool[it->second].value = val;
+            pool[it->second].used  = true;
+            return;
+        }
+
+        int idx = evict_or_alloc();
+        pool[idx].key   = key;
+        pool[idx].value = val;
+        pool[idx].used  = true;
+        pool[idx].valid = true;
+        map[key] = idx;
+    }
 };
 
 inline void hash_combine(size_t &seed, size_t hash_val) {
@@ -392,8 +377,8 @@ template <typename T>
 vrt::Dag::Node
 insert_with_sliding_window(const TempNode<T> &temp,
                            std::vector<T> &target_buffer,
-                           LruCache<size_t, PosHistory> &index_cache,
-                           LruCache<size_t, vrt::Dag::Node> &memo_cache) {
+                           ClockCache<size_t, PosHistory> &index_cache,
+                           ClockCache<size_t, vrt::Dag::Node> &memo_cache) {
   int N = temp.elements.size();
   if (N == 0)
     return {0};
@@ -532,11 +517,11 @@ vrt::Dag::Node vrt::Dag::build(u8 depth,
   // size_t cache_limit = 1000000;
   size_t cache_limit = 500000;
 
-  LruCache<size_t, PosHistory> leaf_index_cache(cache_limit);
-  LruCache<size_t, Node> leaf_memo_cache(cache_limit);
+  ClockCache<size_t, PosHistory> leaf_index_cache(cache_limit);
+  ClockCache<size_t, Node> leaf_memo_cache(cache_limit);
 
-  std::vector<LruCache<size_t, PosHistory>> node_index_caches;
-  std::vector<LruCache<size_t, Node>> node_memo_caches;
+  std::vector<ClockCache<size_t, PosHistory>> node_index_caches;
+  std::vector<ClockCache<size_t, Node>> node_memo_caches;
   node_index_caches.reserve(depth);
   node_memo_caches.reserve(depth);
   for (int i = 0; i < depth; ++i) {

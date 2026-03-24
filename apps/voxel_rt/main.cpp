@@ -61,11 +61,11 @@ int main()
     };
 
     vrt::Dag dag;
-    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/2048.bin");
+    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/2048.bin");
     //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/4096.bin");
     //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/8192.bin");
     //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/32768.bin");
-    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/2048.bin");
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/2048.bin");
     //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/1024.bin");
 
     if (root.descriptor == 0)
