@@ -37,8 +37,6 @@ void processInput(const Window& window, Camera& camera, float dt)
 
 int main()
 {
-    const int tree_depth = 11;
-
     const int window_width = 1280;
     const int window_height = 720;
 
@@ -48,6 +46,33 @@ int main()
     Window window{ window_width, window_height, "voxel_rt" };
     Presenter presenter{ resolution_width, resolution_height };
     Buffer2D<glm::vec3> color_buffer{ resolution_width,resolution_height };
+
+    
+
+    vrt::Dag dag;
+    int tree_depth = 10;
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/1024c.bin");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/1024c.vdag");
+
+    /*tree_depth = 11;
+    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/2048.bin");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/2048.vdag");
+
+    tree_depth = 12;
+    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/4096.bin");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/4096.vdag");
+
+    tree_depth = 13;
+    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/8192.bin");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/8192.vdag");
+
+    tree_depth = 14;
+    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/16384.bin");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/16384.vdag");
+
+    tree_depth = 15;
+    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/32768.bin");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/32768.vdag");*/
 
     // Pozycja startowa i speed kamery = 2^(depth-4), czyli ~1/16 rozmiaru sceny
     const float cam_scale = static_cast<float>(1u << std::max(0, tree_depth - 4));
@@ -60,8 +85,10 @@ int main()
         glm::vec3{ cam_scale }
     };
 
-    vrt::Dag dag;
-    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/2048.bin");
+    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/4096.bin");
+    //dag.save("C:/Users/Piotr/Downloads/hairball/vdag/4096.vdag");
+
+    //auto root = dag.load("C:/Users/Piotr/Downloads/San_Miguel/vdag/2048.vdag");
 
     if (root.descriptor == 0)
     {
@@ -83,7 +110,7 @@ int main()
         current_frame_time = glfwGetTime();
         delta_time = current_frame_time - last_frame_time;
         last_frame_time = current_frame_time;
-        
+
         window.pool_events();
 
         float dx = 0.0f, dy = 0.0f;
@@ -92,7 +119,7 @@ int main()
 
         camera.process_mouse_movement(dx, dy);
 
-        #pragma omp parallel for schedule(dynamic, 1)
+#pragma omp parallel for schedule(dynamic, 1)
         for (int y = 0; y < resolution_height; ++y)
         {
             for (int x = 0; x < resolution_width; ++x)
@@ -117,7 +144,10 @@ int main()
                         result.voxel.b / 255.0f
                     };
 
-                    color_buffer(x, y) = base_color;
+                    glm::vec3 light_dir = glm::normalize(glm::vec3(0.5f, 1.0f, 0.3f));
+                    float diff = glm::max(0.2f, glm::dot(result.normal, light_dir));
+
+                    color_buffer(x, y) = base_color * diff;
                 }
             }
         }

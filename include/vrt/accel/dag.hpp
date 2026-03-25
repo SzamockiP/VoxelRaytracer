@@ -76,6 +76,9 @@ namespace vrt
 
         Node build(u8 depth, const std::filesystem::path& filepath);
 
+        void save(const std::filesystem::path& filepath) const;
+        Node load(const std::filesystem::path& filepath);
+
         Hit intersect(const Ray& ray, u8 depth, const Node& root) const noexcept;
 
         void debug()

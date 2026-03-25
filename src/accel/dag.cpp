@@ -392,7 +392,6 @@ public:
         pool[idx].key = key;
         pool[idx].value = val;
         pool[idx].used = true;
-        pool[idx].valid = true;
         map[key] = idx;
     }
 };
@@ -413,7 +412,13 @@ insert_with_sliding_window(const TempNode<T>& temp,
     if (N == 0)
         return { 0 };
     if (N > 8)
+    {
+        for (const auto& element : temp.elements)
+        {
+            std::println("{}", reinterpret_cast<const vrt::u64&>(element));
+        }
         throw std::runtime_error("CRITICAL FATAL ERROR: TempNode N > 8!");
+    }
 
     size_t temp_hash = std::hash<uint8_t>{}(temp.mask);
     for (int e = 0; e < N; ++e)
@@ -427,15 +432,39 @@ insert_with_sliding_window(const TempNode<T>& temp,
         return *cached_node;
     }
 
+    std::vector<T> unique_elements;
+    int element_to_unique[8]; // Mapuje indeks e na indeks unikalnego elementu
+    unique_elements.reserve(N);
+
+    for (int e = 0; e < N; ++e)
+    {
+        int found_idx = -1;
+        for (int u = 0; u < (int)unique_elements.size(); ++u)
+        {
+            if (unique_elements[u] == temp.elements[e])
+            {
+                found_idx = u;
+                break;
+            }
+        }
+        if (found_idx == -1)
+        {
+            found_idx = (int)unique_elements.size();
+            unique_elements.push_back(temp.elements[e]);
+        }
+        element_to_unique[e] = found_idx;
+    }
+
+    int num_unique = unique_elements.size();
+
     bool found_match = false;
     int best_index = -1;
     int best_offsets[8] = { 0 };
 
-    // Szukamy okna w buforze, w którym wszystkie elementy temp już istnieją.
+    // Szukamy okna w buforze, w którym wszystkie UNIKALNE elementy już istnieją.
     // Zaczynamy od znanych pozycji pierwszego elementu (z index_cache), by nie
-    // skanować całego bufora. Dla każdej kandydackiej pozycji sprawdzamy okno
-    // o rozmiarze do 8 — jeśli zawiera wszystkie N elementów, możemy je reużyć.
-    PosHistory* history = index_cache.get(hash_memory(temp.elements[0]));
+    // skanować całego bufora.
+    PosHistory* history = index_cache.get(hash_memory(unique_elements[0]));
     if (history != nullptr)
     {
         for (int h = 0; h < history->count; ++h)
@@ -446,26 +475,26 @@ insert_with_sliding_window(const TempNode<T>& temp,
             for (int i = start_i; i <= pos; ++i)
             {
                 int window_size = std::min(8, (int)(target_buffer.size() - i));
-                if (window_size < N)
+                if (window_size < num_unique)
                     continue;
 
                 bool window_has_all = true;
-                int current_offsets[8] = { 0 };
+                int unique_offsets[8] = { 0 };
 
-                // Sprawdź, czy każdy element temp mieści się gdzieś w oknie
-                for (int e = 0; e < N; ++e)
+                // Sprawdź, czy każdy unikalny element mieści się gdzieś w oknie
+                for (int u = 0; u < num_unique; ++u)
                 {
-                    bool found_e = false;
+                    bool found_u = false;
                     for (int w = 0; w < window_size; ++w)
                     {
-                        if (temp.elements[e] == target_buffer[i + w])
+                        if (unique_elements[u] == target_buffer[i + w])
                         {
-                            current_offsets[e] = w;
-                            found_e = true;
+                            unique_offsets[u] = w;
+                            found_u = true;
                             break;
                         }
                     }
-                    if (!found_e)
+                    if (!found_u)
                     {
                         window_has_all = false;
                         break;
@@ -477,7 +506,7 @@ insert_with_sliding_window(const TempNode<T>& temp,
                     found_match = true;
                     best_index = i;
                     for (int e = 0; e < N; ++e)
-                        best_offsets[e] = current_offsets[e];
+                        best_offsets[e] = unique_offsets[element_to_unique[e]];
                     break;
                 }
             }
@@ -506,7 +535,7 @@ insert_with_sliding_window(const TempNode<T>& temp,
     {
         // 1. Szukamy nakładania się początków na koniec (Prefix-Suffix Overlap)
         int overlap = 0;
-        int max_possible_overlap = std::min(N, (int)target_buffer.size());
+        int max_possible_overlap = std::min(num_unique, (int)target_buffer.size());
 
         for (int o = max_possible_overlap; o > 0; --o)
         {
@@ -514,9 +543,8 @@ insert_with_sliding_window(const TempNode<T>& temp,
             for (int i = 0; i < o; ++i)
             {
                 // Używamy negacji operatora ==, żeby nie wymagać istnienia operatora !=
-                // w strukturze Node/Voxel
                 if (!(target_buffer[target_buffer.size() - o + i] ==
-                    temp.elements[i]))
+                    unique_elements[i]))
                 {
                     match = false;
                     break;
@@ -533,26 +561,26 @@ insert_with_sliding_window(const TempNode<T>& temp,
         final_node.index = target_buffer.size() - overlap;
 
         // 3. Dodajemy na koniec tylko te elementy, których nam brakuje
-        for (int e = overlap; e < N; ++e)
+        for (int u = overlap; u < num_unique; ++u)
         {
-            target_buffer.push_back(temp.elements[e]);
+            target_buffer.push_back(unique_elements[u]);
 
             // Aktualizacja naszego EpochCache:
             PosHistory hist;
-            PosHistory* existing = index_cache.get(hash_memory(temp.elements[e]));
+            PosHistory* existing = index_cache.get(hash_memory(unique_elements[u]));
             if (existing)
                 hist = *existing;
             hist.add(target_buffer.size() - 1);
-            index_cache.put(hash_memory(temp.elements[e]), hist);
+            index_cache.put(hash_memory(unique_elements[u]), hist);
         }
 
-        // 4. Przypisujemy idealnie liniowe, gwarantowanie DODATNIE offsety
+        // 4. Przypisujemy offsety wykorzystując stworzone mapowanie duplikatów
         int active_idx = 0;
         for (int i = 0; i < 8; ++i)
         {
             if (temp.mask & (1 << i))
             {
-                final_node.set_child_offset(i, active_idx);
+                final_node.set_child_offset(i, element_to_unique[active_idx]);
                 active_idx++;
             }
         }
@@ -733,6 +761,59 @@ vrt::Dag::Node vrt::Dag::build(u8 depth,
             nodes_.push_back(patched_node);
         }
     }
+
+    return nodes_.empty() ? Node{} : nodes_.back();
+}
+
+void vrt::Dag::save(const std::filesystem::path& filepath) const
+{
+    if (nodes_.empty() && leaves_.empty())
+        return;
+
+    std::ofstream file(filepath, std::ios::binary);
+    if (!file)
+        throw std::runtime_error("Error: Cannot open file for writing: " + filepath.string());
+
+    // Magic number: "VDAG"
+    const char magic[4] = { 'V', 'D', 'A', 'G' };
+    file.write(magic, 4);
+
+    u64 num_nodes = nodes_.size();
+    u64 num_leaves = leaves_.size();
+
+    file.write(reinterpret_cast<const char*>(&num_nodes), sizeof(u64));
+    file.write(reinterpret_cast<const char*>(&num_leaves), sizeof(u64));
+
+    if (num_nodes > 0)
+        file.write(reinterpret_cast<const char*>(nodes_.data()), num_nodes * sizeof(Node));
+    if (num_leaves > 0)
+        file.write(reinterpret_cast<const char*>(leaves_.data()), num_leaves * sizeof(Voxel));
+}
+
+vrt::Dag::Node vrt::Dag::load(const std::filesystem::path& filepath)
+{
+    std::ifstream file(filepath, std::ios::binary);
+    if (!file)
+        throw std::runtime_error("Error: Cannot open file for reading: " + filepath.string());
+
+    char magic[4];
+    file.read(magic, 4);
+    if (magic[0] != 'V' || magic[1] != 'D' || magic[2] != 'A' || magic[3] != 'G')
+        throw std::runtime_error("Error: Invalid VDAG file format.");
+
+    u64 num_nodes = 0;
+    u64 num_leaves = 0;
+
+    file.read(reinterpret_cast<char*>(&num_nodes), sizeof(u64));
+    file.read(reinterpret_cast<char*>(&num_leaves), sizeof(u64));
+
+    nodes_.resize(num_nodes);
+    leaves_.resize(num_leaves);
+
+    if (num_nodes > 0)
+        file.read(reinterpret_cast<char*>(nodes_.data()), num_nodes * sizeof(Node));
+    if (num_leaves > 0)
+        file.read(reinterpret_cast<char*>(leaves_.data()), num_leaves * sizeof(Voxel));
 
     return nodes_.empty() ? Node{} : nodes_.back();
 }
