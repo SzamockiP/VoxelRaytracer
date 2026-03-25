@@ -50,9 +50,9 @@ int main()
     
 
     vrt::Dag dag;
-    int tree_depth = 10;
-    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/1024c.bin");
-    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/1024c.vdag");
+    int tree_depth = 13;
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/8192c.bin");
+    //dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/1024c.vdag");
 
     /*tree_depth = 11;
     root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/2048.bin");
