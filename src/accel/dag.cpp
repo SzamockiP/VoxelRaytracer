@@ -291,303 +291,132 @@ template <typename T> struct TempNode
     bool is_empty() const { return mask == 0; }
 };
 
-// Kołowy bufor ostatnich pozycji danego elementu w target_buffer.
-// Używany przez sliding window search jako punkt startowy przeszukiwania.
-struct PosHistory
-{
-    static constexpr int CAP = 32; // Ile ostatnich pozycji danego elementu pamiętamy
-    int positions[CAP];
-    std::uint8_t head = 0;
-    std::uint8_t count = 0;
-
-    void add(int pos)
-    {
-        positions[head] = pos;
-        head = (head + 1) % CAP;
-        if (count < CAP)
-            count++;
-    }
-};
-
-// Clock Cache (Second-Chance) — lepsza retencja często używanych wpisów niż LRU.
-// Wpis z used=true dostaje "drugą szansę": bit jest czyszczony zamiast eksmisji.
-// Brak linked-list, wskazówka (hand) obraca się przez pool. O(1) amortyzowany.
-// Idealny dla DAG build: globalnie często używane wzorce węzłów przeżywają dłużej.
-template <typename Key, typename Value>
-class ClockCache
-{
-private:
-    struct Slot
-    {
-        Key   key = {};
-        Value value = {};
-        bool  used = false;
-    };
-
-    std::vector<Slot>            pool;
-    std::unordered_map<Key, int> map;
-    int    hand = 0;   // wskazówka zegara
-    int    size_used = 0;
-    size_t cap;
-
-    // Znajdź wolny slot lub wyeksmituj przez algorytm Clock
-    int evict_or_alloc()
-    {
-        if (size_used < static_cast<int>(cap))
-        {
-            // Jeszcze jest wolne miejsce — wstaw kolejno
-            int idx = size_used++;
-            return idx;
-        }
-
-        // Cache pełny — obracaj wskazówką
-        while (true)
-        {
-            Slot& s = pool[hand];
-            if (!s.used)
-            {
-                // Drugi raz tutaj bez użycia — eksmituj
-                map.erase(s.key);
-                int idx = hand;
-                hand = (hand + 1) % static_cast<int>(cap);
-                return idx;
-            }
-            // Daj drugą szansę
-            s.used = false;
-            hand = (hand + 1) % static_cast<int>(cap);
-        }
-    }
-
-public:
-    explicit ClockCache(size_t limit = 5000000) : cap(limit)
-    {
-        pool.resize(cap);
-        map.reserve(cap);
-    }
-
-    ClockCache(ClockCache&&) = default;
-    ClockCache& operator=(ClockCache&&) = default;
-    ClockCache(const ClockCache&) = delete;
-    ClockCache& operator=(const ClockCache&) = delete;
-
-    Value* get(const Key& key)
-    {
-        auto it = map.find(key);
-        if (it == map.end()) return nullptr;
-        pool[it->second].used = true;
-        return &pool[it->second].value;
-    }
-
-    void put(const Key& key, const Value& val)
-    {
-        auto it = map.find(key);
-        if (it != map.end())
-        {
-            pool[it->second].value = val;
-            pool[it->second].used = true;
-            return;
-        }
-
-        int idx = evict_or_alloc();
-        pool[idx].key = key;
-        pool[idx].value = val;
-        pool[idx].used = true;
-        map[key] = idx;
-    }
-};
-
 inline void hash_combine(size_t& seed, size_t hash_val)
 {
     seed ^= hash_val + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 }
 
 template <typename T>
-vrt::Dag::Node
-insert_with_sliding_window(const TempNode<T>& temp,
+vrt::Dag::Node insert_with_sliding_window(
+    const TempNode<T>& temp,
     std::vector<T>& target_buffer,
-    ClockCache<size_t, PosHistory>& index_cache,
-    ClockCache<size_t, vrt::Dag::Node>& memo_cache)
+    std::unordered_map<size_t, std::vector<int>>& index_cache,
+    std::unordered_map<size_t, vrt::Dag::Node>& memo_cache)
 {
     int N = temp.elements.size();
-    if (N == 0)
-        return { 0 };
-    if (N > 8)
-    {
-        for (const auto& element : temp.elements)
-        {
-            std::println("{}", reinterpret_cast<const vrt::u64&>(element));
-        }
-        throw std::runtime_error("CRITICAL FATAL ERROR: TempNode N > 8!");
-    }
+    if (N == 0) return { 0 };
+    if (N > 8) throw std::runtime_error("FATAL ERROR: TempNode N > 8");
 
+    // 1. Memo Cache (Pamięć gotowych węzłów)
     size_t temp_hash = std::hash<uint8_t>{}(temp.mask);
-    for (int e = 0; e < N; ++e)
+    for (const auto& el : temp.elements) hash_combine(temp_hash, hash_memory(el));
+
+    if (auto it = memo_cache.find(temp_hash); it != memo_cache.end())
+        return it->second;
+
+    // 2. Unikalne klocki (Krótko, czystym C++)
+    std::vector<T> unique_elems;
+    int elem_to_unique[8];
+    for (int i = 0; i < N; ++i)
     {
-        hash_combine(temp_hash, hash_memory(temp.elements[e]));
+        auto it = std::find(unique_elems.begin(), unique_elems.end(), temp.elements[i]);
+        elem_to_unique[i] = std::distance(unique_elems.begin(), it);
+        if (it == unique_elems.end()) unique_elems.push_back(temp.elements[i]);
     }
+    int U = unique_elems.size();
 
-    vrt::Dag::Node* cached_node = memo_cache.get(temp_hash);
-    if (cached_node != nullptr)
+    // 3. Przygotowanie do Galloping Search
+    std::vector<const std::vector<int>*> vecs(U);
+    bool can_gallop = true;
+    for (int i = 0; i < U; ++i)
     {
-        return *cached_node;
-    }
-
-    std::vector<T> unique_elements;
-    int element_to_unique[8]; // Mapuje indeks e na indeks unikalnego elementu
-    unique_elements.reserve(N);
-
-    for (int e = 0; e < N; ++e)
-    {
-        int found_idx = -1;
-        for (int u = 0; u < (int)unique_elements.size(); ++u)
+        auto it = index_cache.find(hash_memory(unique_elems[i]));
+        if (it == index_cache.end() || it->second.empty())
         {
-            if (unique_elements[u] == temp.elements[e])
-            {
-                found_idx = u;
-                break;
-            }
+            can_gallop = false; break; // Brakuje elementu w historii
         }
-        if (found_idx == -1)
-        {
-            found_idx = (int)unique_elements.size();
-            unique_elements.push_back(temp.elements[e]);
-        }
-        element_to_unique[e] = found_idx;
+        vecs[i] = &it->second;
     }
 
-    int num_unique = unique_elements.size();
-
-    bool found_match = false;
     int best_index = -1;
-    int best_offsets[8] = { 0 };
+    int unique_offsets[8] = { 0 };
 
-    // Szukamy okna w buforze, w którym wszystkie UNIKALNE elementy już istnieją.
-    // Zaczynamy od znanych pozycji pierwszego elementu (z index_cache), by nie
-    // skanować całego bufora.
-    PosHistory* history = index_cache.get(hash_memory(unique_elements[0]));
-    if (history != nullptr)
+    // 4. GALLOPING SEARCH (Skoki binarne)
+    if (can_gallop)
     {
-        for (int h = 0; h < history->count; ++h)
+        std::vector<int> ptrs(U, 0);
+        while (true)
         {
-            int pos = history->positions[h];
-            int start_i = std::max(0, pos - 7);
-
-            for (int i = start_i; i <= pos; ++i)
+            int min_val = INT_MAX, max_val = -1, min_u = -1;
+            for (int i = 0; i < U; ++i)
             {
-                int window_size = std::min(8, (int)(target_buffer.size() - i));
-                if (window_size < num_unique)
-                    continue;
-
-                bool window_has_all = true;
-                int unique_offsets[8] = { 0 };
-
-                // Sprawdź, czy każdy unikalny element mieści się gdzieś w oknie
-                for (int u = 0; u < num_unique; ++u)
-                {
-                    bool found_u = false;
-                    for (int w = 0; w < window_size; ++w)
-                    {
-                        if (unique_elements[u] == target_buffer[i + w])
-                        {
-                            unique_offsets[u] = w;
-                            found_u = true;
-                            break;
-                        }
-                    }
-                    if (!found_u)
-                    {
-                        window_has_all = false;
-                        break;
-                    }
-                }
-
-                if (window_has_all)
-                {
-                    found_match = true;
-                    best_index = i;
-                    for (int e = 0; e < N; ++e)
-                        best_offsets[e] = unique_offsets[element_to_unique[e]];
-                    break;
-                }
+                int val = (*vecs[i])[ptrs[i]];
+                if (val < min_val) { min_val = val; min_u = i; }
+                if (val > max_val) max_val = val;
             }
-            if (found_match)
+
+            if (max_val - min_val < 8)
+            {
+                best_index = min_val; // BINGO! Mamy idealne okienko.
+                for (int i = 0; i < U; ++i) unique_offsets[i] = (*vecs[i])[ptrs[i]] - best_index;
                 break;
-        }
-    }
-
-    vrt::Dag::Node final_node;
-    final_node.descriptor = 0;
-
-    if (found_match)
-    {
-        final_node.index = best_index;
-        int active_idx = 0;
-        for (int i = 0; i < 8; ++i)
-        {
-            if (temp.mask & (1 << i))
-            {
-                final_node.set_child_offset(i, best_offsets[active_idx]);
-                active_idx++;
             }
+
+            auto& vec = *vecs[min_u];
+            auto it = std::lower_bound(vec.begin() + ptrs[min_u], vec.end(), max_val - 7);
+            if (it == vec.end()) break; // Koniec historii dla tego klocka
+            ptrs[min_u] = std::distance(vec.begin(), it);
         }
     }
-    else
-    {
-        // 1. Szukamy nakładania się początków na koniec (Prefix-Suffix Overlap)
-        int overlap = 0;
-        int max_possible_overlap = std::min(num_unique, (int)target_buffer.size());
 
-        for (int o = max_possible_overlap; o > 0; --o)
+    // 5. FALLBACK (Jeśli Galloping nic nie znalazł)
+    if (best_index == -1)
+    {
+        int overlap = 0;
+        int max_o = std::min(U, (int)target_buffer.size());
+        for (int o = max_o; o > 0; --o)
         {
             bool match = true;
             for (int i = 0; i < o; ++i)
             {
-                // Używamy negacji operatora ==, żeby nie wymagać istnienia operatora !=
-                if (!(target_buffer[target_buffer.size() - o + i] ==
-                    unique_elements[i]))
+                if (!(target_buffer[target_buffer.size() - o + i] == unique_elems[i]))
                 {
-                    match = false;
-                    break;
+                    match = false; break;
                 }
             }
-            if (match)
-            {
-                overlap = o;
-                break;
-            }
+            if (match) { overlap = o; break; }
         }
 
-        // 2. Ustawiamy base_index na początek nakładającej się części w buforze
-        final_node.index = target_buffer.size() - overlap;
+        best_index = target_buffer.size() - overlap;
 
-        // 3. Dodajemy na koniec tylko te elementy, których nam brakuje
-        for (int u = overlap; u < num_unique; ++u)
+        // Magiczna optymalizacja: w fallbacku offset unikalnego elementu to zawsze po prostu 'i'!
+        for (int i = 0; i < U; ++i)
         {
-            target_buffer.push_back(unique_elements[u]);
-
-            // Aktualizacja naszego EpochCache:
-            PosHistory hist;
-            PosHistory* existing = index_cache.get(hash_memory(unique_elements[u]));
-            if (existing)
-                hist = *existing;
-            hist.add(target_buffer.size() - 1);
-            index_cache.put(hash_memory(unique_elements[u]), hist);
-        }
-
-        // 4. Przypisujemy offsety wykorzystując stworzone mapowanie duplikatów
-        int active_idx = 0;
-        for (int i = 0; i < 8; ++i)
-        {
-            if (temp.mask & (1 << i))
+            unique_offsets[i] = i;
+            if (i >= overlap)
             {
-                final_node.set_child_offset(i, element_to_unique[active_idx]);
-                active_idx++;
+                target_buffer.push_back(unique_elems[i]);
+                index_cache[hash_memory(unique_elems[i])].push_back(target_buffer.size() - 1);
             }
         }
     }
 
-    memo_cache.put(temp_hash, final_node);
-    return final_node;
+    // 6. Budowanie i zapis węzła
+    vrt::Dag::Node node;
+    node.descriptor = 0;
+    node.index = best_index;
+
+    int active_idx = 0;
+    for (int i = 0; i < 8; ++i)
+    {
+        if (temp.mask & (1 << i))
+        {
+            node.set_child_offset(i, unique_offsets[elem_to_unique[active_idx++]]);
+        }
+    }
+
+    memo_cache[temp_hash] = node;
+    return node;
 }
 
 vrt::Dag::Node vrt::Dag::build(u8 depth,
@@ -599,20 +428,13 @@ vrt::Dag::Node vrt::Dag::build(u8 depth,
     }
 
     std::ifstream file(filepath, std::ios::binary);
-    size_t cache_limit = 500000;
+    // Mapy indeksów (Historia wystąpień na każdym poziomie)
+    std::unordered_map<size_t, std::vector<int>> leaf_index_cache;
+    std::vector<std::unordered_map<size_t, std::vector<int>>> node_index_caches(depth);
 
-    ClockCache<size_t, PosHistory> leaf_index_cache(cache_limit);
-    ClockCache<size_t, Node> leaf_memo_cache(cache_limit);
-
-    std::vector<ClockCache<size_t, PosHistory>> node_index_caches;
-    std::vector<ClockCache<size_t, Node>> node_memo_caches;
-    node_index_caches.reserve(depth);
-    node_memo_caches.reserve(depth);
-    for (int i = 0; i < depth; ++i)
-    {
-        node_index_caches.emplace_back(cache_limit / 4);
-        node_memo_caches.emplace_back(cache_limit / 4);
-    }
+    // Mapy węzłów (Memoizacja ułożenia węzła na każdym poziomie)
+    std::unordered_map<size_t, Node> leaf_memo_cache;
+    std::vector<std::unordered_map<size_t, Node>> node_memo_caches(depth);
 
     std::vector<TempNode<Node>> temp_nodes(depth);
     TempNode<Voxel> temp_leaf;
