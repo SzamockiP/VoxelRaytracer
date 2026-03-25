@@ -392,7 +392,6 @@ public:
         pool[idx].key = key;
         pool[idx].value = val;
         pool[idx].used = true;
-        pool[idx].valid = true;
         map[key] = idx;
     }
 };
@@ -413,7 +412,13 @@ insert_with_sliding_window(const TempNode<T>& temp,
     if (N == 0)
         return { 0 };
     if (N > 8)
+    {
+        for (const auto& element : temp.elements)
+        {
+            std::println("{}", reinterpret_cast<const vrt::u64&>(element));
+        }
         throw std::runtime_error("CRITICAL FATAL ERROR: TempNode N > 8!");
+    }
 
     size_t temp_hash = std::hash<uint8_t>{}(temp.mask);
     for (int e = 0; e < N; ++e)
@@ -733,6 +738,59 @@ vrt::Dag::Node vrt::Dag::build(u8 depth,
             nodes_.push_back(patched_node);
         }
     }
+
+    return nodes_.empty() ? Node{} : nodes_.back();
+}
+
+void vrt::Dag::save(const std::filesystem::path& filepath) const
+{
+    if (nodes_.empty() && leaves_.empty())
+        return;
+
+    std::ofstream file(filepath, std::ios::binary);
+    if (!file)
+        throw std::runtime_error("Error: Cannot open file for writing: " + filepath.string());
+
+    // Magic number: "VDAG"
+    const char magic[4] = { 'V', 'D', 'A', 'G' };
+    file.write(magic, 4);
+
+    u64 num_nodes = nodes_.size();
+    u64 num_leaves = leaves_.size();
+
+    file.write(reinterpret_cast<const char*>(&num_nodes), sizeof(u64));
+    file.write(reinterpret_cast<const char*>(&num_leaves), sizeof(u64));
+
+    if (num_nodes > 0)
+        file.write(reinterpret_cast<const char*>(nodes_.data()), num_nodes * sizeof(Node));
+    if (num_leaves > 0)
+        file.write(reinterpret_cast<const char*>(leaves_.data()), num_leaves * sizeof(Voxel));
+}
+
+vrt::Dag::Node vrt::Dag::load(const std::filesystem::path& filepath)
+{
+    std::ifstream file(filepath, std::ios::binary);
+    if (!file)
+        throw std::runtime_error("Error: Cannot open file for reading: " + filepath.string());
+
+    char magic[4];
+    file.read(magic, 4);
+    if (magic[0] != 'V' || magic[1] != 'D' || magic[2] != 'A' || magic[3] != 'G')
+        throw std::runtime_error("Error: Invalid VDAG file format.");
+
+    u64 num_nodes = 0;
+    u64 num_leaves = 0;
+
+    file.read(reinterpret_cast<char*>(&num_nodes), sizeof(u64));
+    file.read(reinterpret_cast<char*>(&num_leaves), sizeof(u64));
+
+    nodes_.resize(num_nodes);
+    leaves_.resize(num_leaves);
+
+    if (num_nodes > 0)
+        file.read(reinterpret_cast<char*>(nodes_.data()), num_nodes * sizeof(Node));
+    if (num_leaves > 0)
+        file.read(reinterpret_cast<char*>(leaves_.data()), num_leaves * sizeof(Voxel));
 
     return nodes_.empty() ? Node{} : nodes_.back();
 }

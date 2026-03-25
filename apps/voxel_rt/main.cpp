@@ -37,7 +37,7 @@ void processInput(const Window& window, Camera& camera, float dt)
 
 int main()
 {
-    const int tree_depth = 11;
+    const int tree_depth = 12;
 
     const int window_width = 1280;
     const int window_height = 720;
@@ -61,7 +61,11 @@ int main()
     };
 
     vrt::Dag dag;
-    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/2048.bin");
+
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/4096.bin");
+    dag.save("C:/Users/Piotr/Downloads/hairball/vdag/4096.vdag");
+
+    //auto root = dag.load("C:/Users/Piotr/Downloads/San_Miguel/vdag/2048.vdag");
 
     if (root.descriptor == 0)
     {
@@ -83,7 +87,7 @@ int main()
         current_frame_time = glfwGetTime();
         delta_time = current_frame_time - last_frame_time;
         last_frame_time = current_frame_time;
-        
+
         window.pool_events();
 
         float dx = 0.0f, dy = 0.0f;
@@ -92,7 +96,7 @@ int main()
 
         camera.process_mouse_movement(dx, dy);
 
-        #pragma omp parallel for schedule(dynamic, 1)
+#pragma omp parallel for schedule(dynamic, 1)
         for (int y = 0; y < resolution_height; ++y)
         {
             for (int x = 0; x < resolution_width; ++x)
