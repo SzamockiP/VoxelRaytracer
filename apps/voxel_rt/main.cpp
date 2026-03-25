@@ -37,8 +37,6 @@ void processInput(const Window& window, Camera& camera, float dt)
 
 int main()
 {
-    const int tree_depth = 12;
-
     const int window_width = 1280;
     const int window_height = 720;
 
@@ -48,6 +46,33 @@ int main()
     Window window{ window_width, window_height, "voxel_rt" };
     Presenter presenter{ resolution_width, resolution_height };
     Buffer2D<glm::vec3> color_buffer{ resolution_width,resolution_height };
+
+    
+
+    vrt::Dag dag;
+    int tree_depth = 10;
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/1024.bin");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/1024.vdag");
+
+    tree_depth = 11;
+    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/2048.bin");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/2048.vdag");
+
+    tree_depth = 12;
+    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/4096.bin");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/4096.vdag");
+
+    tree_depth = 13;
+    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/8192.bin");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/8192.vdag");
+
+    tree_depth = 14;
+    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/16384.bin");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/16384.vdag");
+
+    tree_depth = 15;
+    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/32768.bin");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/32768.vdag");
 
     // Pozycja startowa i speed kamery = 2^(depth-4), czyli ~1/16 rozmiaru sceny
     const float cam_scale = static_cast<float>(1u << std::max(0, tree_depth - 4));
@@ -60,10 +85,8 @@ int main()
         glm::vec3{ cam_scale }
     };
 
-    vrt::Dag dag;
-
-    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/4096.bin");
-    dag.save("C:/Users/Piotr/Downloads/hairball/vdag/4096.vdag");
+    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/hairball/bin/4096.bin");
+    //dag.save("C:/Users/Piotr/Downloads/hairball/vdag/4096.vdag");
 
     //auto root = dag.load("C:/Users/Piotr/Downloads/San_Miguel/vdag/2048.vdag");
 
