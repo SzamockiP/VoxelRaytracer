@@ -51,10 +51,10 @@ int main()
 
     vrt::Dag dag;
     int tree_depth = 10;
-    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/1024.bin");
-    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/1024.vdag");
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/1024c.bin");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/1024c.vdag");
 
-    tree_depth = 11;
+    /*tree_depth = 11;
     root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/2048.bin");
     dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/2048.vdag");
 
@@ -72,7 +72,7 @@ int main()
 
     tree_depth = 15;
     root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/32768.bin");
-    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/32768.vdag");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/32768.vdag");*/
 
     // Pozycja startowa i speed kamery = 2^(depth-4), czyli ~1/16 rozmiaru sceny
     const float cam_scale = static_cast<float>(1u << std::max(0, tree_depth - 4));
@@ -144,7 +144,10 @@ int main()
                         result.voxel.b / 255.0f
                     };
 
-                    color_buffer(x, y) = base_color;
+                    glm::vec3 light_dir = glm::normalize(glm::vec3(0.5f, 1.0f, 0.3f));
+                    float diff = glm::max(0.2f, glm::dot(result.normal, light_dir));
+
+                    color_buffer(x, y) = base_color * diff;
                 }
             }
         }
