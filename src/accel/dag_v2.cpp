@@ -8,70 +8,40 @@ namespace vrt
 {
     namespace v2
     {
-
-        // =========================================================================
-        // STRUKTURY POMOCNICZE
-        // =========================================================================
-
-        struct TempNode
+#pragma pack(push, 1)
+        struct BaertNode
         {
-            bool valid[8] = { false };
-            vrt::u32 children[8] = { 0 };
+            uint64_t data_address;       // 8 bajtów (Ignorujemy, to kolory/normalne)
+            uint64_t children_base;      // 8 bajtów (Baza dzieci)
+            int8_t child_offsets[8];     // 8 bajtów (Offsety od bazy, -1 oznacza brak)
+        };
+#pragma pack(pop)
 
-            void add(vrt::u8 octant, vrt::u32 child_idx)
+        // =========================================================================
+        // STRUKTURY POMOCNICZE DO KOMPRESJI V3
+        // =========================================================================
+
+        struct InternalNodeData
+        {
+            vrt::u32 desc;
+            std::vector<vrt::u32> children;
+
+            bool operator==(const InternalNodeData& other) const
             {
-                valid[octant] = true;
-                children[octant] = child_idx;
+                return desc == other.desc && children == other.children;
             }
+        };
 
-            bool is_empty() const
+        struct InternalNodeHash
+        {
+            size_t operator()(const InternalNodeData& data) const
             {
-                for (int i = 0; i < 8; ++i) if (valid[i]) return false;
-                return true;
-            }
-
-            void clear()
-            {
-                for (int i = 0; i < 8; ++i) valid[i] = false;
-            }
-
-            vrt::u32 emit(std::vector<vrt::u32>& level_buffer)
-            {
-                vrt::u32 descriptor = 0;
-                std::vector<vrt::u32> unique_children;
-
-                for (int i = 0; i < 8; ++i)
+                size_t hash = std::hash<vrt::u32>()(data.desc);
+                for (vrt::u32 c : data.children)
                 {
-                    if (!valid[i]) continue;
-
-                    vrt::u32 offset = 0;
-                    bool found = false;
-                    for (size_t j = 0; j < unique_children.size(); ++j)
-                    {
-                        if (unique_children[j] == children[i])
-                        {
-                            offset = j;
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found)
-                    {
-                        offset = unique_children.size();
-                        unique_children.push_back(children[i]);
-                    }
-
-                    vrt::u32 chunk = 0b1000 | (offset & 0b0111);
-                    descriptor |= (chunk << (i * 4));
+                    hash ^= std::hash<vrt::u32>()(c) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
                 }
-
-                vrt::u32 start_idx = level_buffer.size();
-                level_buffer.push_back(descriptor);
-                for (vrt::u32 c : unique_children)
-                {
-                    level_buffer.push_back(c);
-                }
-                return start_idx;
+                return hash;
             }
         };
 
@@ -84,263 +54,260 @@ namespace vrt
         };
 
         // =========================================================================
-        // BUILDER (Kompresja SVO -> SVDAG)
+        // BUILDER: IMPORT Z .OCTREE I NATYCHMIASTOWA KOMPRESJA V3
         // =========================================================================
 
-        vrt::u32 vrt::v2::Dag::build(u8 depth, const std::filesystem::path& filepath)
+        vrt::u32 Dag::build(u8 fallback_depth, const std::filesystem::path& filepath)
         {
             if (!std::filesystem::exists(filepath))
-                throw std::runtime_error("Error: vrt::v2::Dag::build filepath doesn't exist.");
+                throw std::runtime_error("Error: file doesn't exist: " + filepath.string());
 
-            std::ifstream file(filepath, std::ios::binary);
+            // 1. CZYTANIE NAGŁÓWKA (.octree)
+            std::ifstream header_file(filepath);
+            std::string token;
+            vrt::u32 gridlength = 0;
+            size_t n_nodes = 0;
 
+            while (header_file >> token)
+            {
+                if (token == "gridlength") header_file >> gridlength;
+                if (token == "n_nodes") header_file >> n_nodes;
+            }
+            header_file.close();
+
+            if (gridlength == 0 || n_nodes == 0)
+                throw std::runtime_error("Error: Nieudane parsowanie naglowka .octree");
+
+            std::printf("[V3 Builder] Wczytywanie modelu %dx%dx%d\n", gridlength, gridlength, gridlength);
+            std::printf("[V3 Builder] Calkowita liczba wezlow SVO: %zu\n", n_nodes);
+
+            // 2. WCZYTYWANIE CAŁEGO SVO DO PAMIĘCI
+            std::filesystem::path nodes_path = filepath;
+            nodes_path.replace_extension(".octreenodes");
+
+            if (!std::filesystem::exists(nodes_path))
+                throw std::runtime_error("Error: Brakuje pliku " + nodes_path.string());
+
+            std::vector<BaertNode> svo_nodes(n_nodes);
+            std::ifstream nodes_file(nodes_path, std::ios::binary);
+            nodes_file.read(reinterpret_cast<char*>(svo_nodes.data()), n_nodes * sizeof(BaertNode));
+            nodes_file.close();
+
+            // 3. MATEMATYCZNE SZUKANIE KORZENIA (Root Finder)
+            std::printf("[V3 Builder] Skanowanie grafu w poszukiwaniu Korzenia...\n");
+
+            u8 expected_depth = fallback_depth;
+            if (gridlength > 0) {
+                expected_depth = 0;
+                u32 tmp = gridlength;
+                while (tmp > 1) { tmp >>= 1; expected_depth++; }
+            }
+
+            u32 root_idx = 0;
+            bool root_found = false;
+            u8 highest_depth_found = 0;
+
+            for (int i = static_cast<int>(n_nodes) - 1; i >= 0; --i)
+            {
+                u8 current_max = 0;
+                std::vector<std::pair<u32, u8>> q;
+                q.reserve(100);
+                q.push_back({static_cast<u32>(i), 0});
+                
+                while (!q.empty()) {
+                    auto [node, d] = q.back();
+                    q.pop_back();
+                    
+                    if (d > current_max) current_max = d;
+                    if (current_max >= expected_depth) break; // Znalazł pełne drzewo
+                    
+                    for (int k = 0; k < 8; ++k) {
+                        if (svo_nodes[node].child_offsets[k] >= 0) {
+                            u32 cidx = static_cast<u32>(svo_nodes[node].children_base + svo_nodes[node].child_offsets[k]);
+                            if (cidx < n_nodes) {
+                                q.push_back({cidx, d + 1});
+                            }
+                        }
+                    }
+                }
+                
+                if (current_max > highest_depth_found) {
+                    highest_depth_found = current_max;
+                    root_idx = i;
+                    root_found = true;
+                    
+                    if (highest_depth_found >= expected_depth) {
+                        break; 
+                    }
+                }
+            }
+
+            if (!root_found)
+            {
+                std::printf("[BŁĄD] Plik jest uszkodzony! Nie znaleziono zadnego Korzenia.\n");
+                return 0;
+            }
+            std::printf("[V3 Builder] Korzen znaleziony pod indeksem: %u (zweryfikowana glebokosc: %d)\n", root_idx, highest_depth_found);
+
+            // 4. SONDA GŁĘBINOWA Z ITERACJĄ (Usunięta: polegamy na głębokości z wywołania lub wielkości siatki)
+            u8 max_depth = expected_depth; // Zabezpieczenie zgodności z intersect()
+
+            std::printf("[V3 Builder] Rzeczywista fizyczna glebokosc SVO to: %d\n", max_depth);
+
+            // Definiujemy poziom, na którym budujemy 64-bitowe liście (2 poziomy nad dnem)
+            u8 target_leaf_depth = (max_depth >= 2) ? (max_depth - 2) : 0;
+
+            // 5. PRZYGOTOWANIE STRUKTUR V3
             nodes_.clear();
             geometry_leaves_.clear();
 
             std::unordered_map<u64, u32> leaf_dict;
+            std::unordered_map<InternalNodeData, u32, InternalNodeHash> node_dict;
 
-            auto get_or_add_leaf = [&](u64 mask) -> u32
-                {
+            auto build_solid_dag = [&](auto& self_solid, u8 current_depth) -> u32 {
+                if (current_depth == target_leaf_depth) {
+                    u64 mask = 0xFFFFFFFFFFFFFFFFULL;
                     auto it = leaf_dict.find(mask);
                     if (it != leaf_dict.end()) return it->second;
-
-                    u32 idx = geometry_leaves_.size();
-                    leaf_dict[mask] = idx;
+                    u32 new_idx = geometry_leaves_.size();
                     geometry_leaves_.push_back(mask);
-                    return idx;
-                };
-
-            u8 num_node_levels = (depth > 2) ? depth - 2 : 1;
-            std::vector<std::vector<u32>> level_buffers(num_node_levels);
-            std::vector<TempNode> temp_nodes(num_node_levels);
-
-#pragma pack(push, 1)
-            struct VoxelData { u64 morton; Voxel voxel; };
-#pragma pack(pop)
-
-            VoxelData voxel_data;
-            size_t total_voxels = std::filesystem::file_size(filepath) / sizeof(VoxelData);
-            size_t processed_voxels = 0;
-
-            auto calculate_divergence = [](u64 morton_a, u64 morton_b) -> int
-                {
-                    u64 diff = morton_a ^ morton_b;
-                    if (diff == 0) return 0;
-                    return (63 - std::countl_zero(diff)) / 3;
-                };
-
-            if (!file.read(reinterpret_cast<char*>(&voxel_data), sizeof(VoxelData))) return 0;
-            processed_voxels++;
-
-            u64 last_morton = voxel_data.morton;
-            u64 current_leaf_mask = 0;
-
-            current_leaf_mask |= (1ULL << (last_morton & 0x3F));
-
-            // =========================================================================
-            // FAZA 1: BUDOWANIE SVO (z 64-bitowymi liśćmi)
-            // =========================================================================
-            while (file.read(reinterpret_cast<char*>(&voxel_data), sizeof(VoxelData)))
-            {
-                processed_voxels++;
-                if (processed_voxels % 10000 == 0)
-                {
-                    double percent = (static_cast<double>(processed_voxels) * 100.0) / total_voxels;
-                    std::printf("\r[Phase 1] Building SVO: %zu/%zu [%.2f%%]", processed_voxels, total_voxels, percent);
+                    leaf_dict[mask] = new_idx;
+                    return new_idx;
                 }
-
-                if ((last_morton >> 6) == (voxel_data.morton >> 6))
-                {
-                    current_leaf_mask |= (1ULL << (voxel_data.morton & 0x3F));
+                InternalNodeData node_data;
+                node_data.desc = 0;
+                u32 child_dag_idx = self_solid(self_solid, current_depth + 1);
+                node_data.children.push_back(child_dag_idx);
+                for (int i = 0; i < 8; ++i) {
+                    u32 chunk = 0b1000 | 0b0000;
+                    node_data.desc |= (chunk << (i * 4));
                 }
-                else
+                auto it = node_dict.find(node_data);
+                if (it != node_dict.end()) return it->second;
+                u32 new_idx = nodes_.size();
+                nodes_.push_back(node_data.desc);
+                for (u32 c : node_data.children) nodes_.push_back(c);
+                node_dict[node_data] = new_idx;
+                return new_idx;
+            };
+
+            std::printf("[V3 Builder] Rozpoczynam miazdzenie algorytmem DAG V3 (Post-Order DFS)...\n");
+
+            // 6. REKURENCYJNE PRZESZUKIWANIE (DFS)
+            auto dfs = [&](auto& self, u32 node_idx, u8 current_depth) -> u32
                 {
-                    u32 node_idx = get_or_add_leaf(current_leaf_mask);
-                    current_leaf_mask = 0;
-
-                    int current_level = 0;
-                    temp_nodes[current_level].add((last_morton >> 6) & 0b111, node_idx);
-
-                    int max_level = calculate_divergence(last_morton, voxel_data.morton);
-                    int target_level = max_level - 2;
-                    if (target_level < 0) target_level = 0;
-                    target_level = std::min(target_level, (int)num_node_levels - 1);
-
-                    while (current_level < target_level)
-                    {
-                        node_idx = temp_nodes[current_level].emit(level_buffers[current_level]);
-                        temp_nodes[current_level].clear();
-                        ++current_level;
-
-                        
-                        if (current_level >= num_node_levels) break;
-
-                        u8 parent_octant = (last_morton >> (3 * (current_level + 2))) & 0b111;
-                        temp_nodes[current_level].add(parent_octant, node_idx);
+                    const BaertNode& n = svo_nodes[node_idx];
+                    bool has_any_child = false;
+                    for (int i = 0; i < 8; ++i) {
+                        if (n.child_offsets[i] >= 0) {
+                            u32 cidx = static_cast<u32>(n.children_base + n.child_offsets[i]);
+                            if (cidx < n_nodes) {
+                                has_any_child = true; break;
+                            }
+                        }
                     }
 
-                    current_leaf_mask |= (1ULL << (voxel_data.morton & 0x3F));
-                }
-                last_morton = voxel_data.morton;
-            }
-            std::cout << "\n";
-
-            if (current_leaf_mask != 0)
-            {
-                u32 node_idx = get_or_add_leaf(current_leaf_mask);
-                temp_nodes[0].add((last_morton >> 6) & 0b111, node_idx);
-            }
-
-            // NAPRAWIONE: Pętla idzie do pełnego num_node_levels
-            for (int current_level = 0; current_level < num_node_levels; ++current_level)
-            {
-                if (!temp_nodes[current_level].is_empty())
-                {
-                    // NAPRAWIONE: Zrzucamy na current_level
-                    u32 node_idx = temp_nodes[current_level].emit(level_buffers[current_level]);
-                    temp_nodes[current_level].clear();
-
-                    if (current_level + 1 < num_node_levels)
-                    {
-                        u8 parent_octant = (last_morton >> (3 * (current_level + 3))) & 0b111;
-                        temp_nodes[current_level + 1].add(parent_octant, node_idx);
+                    if (!has_any_child && n.data_address != 0) { // 0 in this struct format means NULL data ptr
+                        return build_solid_dag(build_solid_dag, current_depth);
                     }
-                }
-            }
 
-            // =========================================================================
-            // FAZA 2: KOMPRESJA BOTTOM-UP (Deduplikacja DAG)
-            // =========================================================================
-
-            std::unordered_map<u32, u32> remap_table;
-            u32 last_root_index = 0;
-
-            for (int d = 0; d < num_node_levels; ++d)
-            {
-                std::printf("\r[Phase 2] Compressing level %d/%d", d + 1, num_node_levels);
-                auto& current_level = level_buffers[d];
-                if (current_level.empty()) continue;
-
-                std::vector<u32> node_starts;
-                u32 i = 0;
-                while (i < current_level.size())
-                {
-                    node_starts.push_back(i);
-                    u32 desc = current_level[i];
-                    u32 old_child_count = (desc == 0) ? 0 : (max_offset(desc) + 1);
-
-                    if (d > 0)
+                    if (current_depth == target_leaf_depth)
                     {
-                        u32 new_desc = 0;
-                        std::vector<u32> unique_children;
+                        u64 mask = 0;
+                        const BaertNode& n1 = svo_nodes[node_idx];
 
-                        for (int oct = 0; oct < 8; ++oct)
+                        for (int i = 0; i < 8; ++i)
                         {
-                            u32 chunk = (desc >> (oct * 4)) & 0xF;
-                            if (chunk & 0b1000)
+                            if (n1.child_offsets[i] >= 0)
                             {
-                                u8 old_offset = chunk & 0b0111;
-                                u32 old_child_ptr = current_level[i + 1 + old_offset];
-                                u32 patched_ptr = remap_table.at(old_child_ptr);
+                                u32 child1_idx = static_cast<u32>(n1.children_base + n1.child_offsets[i]);
+                                if (child1_idx < n_nodes) {
+                                    const BaertNode& n2 = svo_nodes[child1_idx];
 
-                                u32 new_offset = 0;
-                                bool found = false;
-                                for (size_t j = 0; j < unique_children.size(); ++j)
-                                {
-                                    if (unique_children[j] == patched_ptr)
-                                    {
-                                        new_offset = j; found = true; break;
+                                    bool has_any_child2 = false;
+                                    for(int j = 0; j < 8; ++j) {
+                                        if(n2.child_offsets[j] >= 0) {
+                                            u32 cidx2 = static_cast<u32>(n2.children_base + n2.child_offsets[j]);
+                                            if(cidx2 < n_nodes) {
+                                                has_any_child2 = true; break;
+                                            }
+                                        }
+                                    }
+
+                                    if (!has_any_child2 && n2.data_address != 0) {
+                                        for (int j = 0; j < 8; ++j) {
+                                            mask |= (1ULL << ((i * 8) + j));
+                                        }
+                                    } else {
+                                        for (int j = 0; j < 8; ++j)
+                                        {
+                                            if (n2.child_offsets[j] >= 0)
+                                            {
+                                                u32 child2_idx = static_cast<u32>(n2.children_base + n2.child_offsets[j]);
+                                                if (child2_idx < n_nodes) {
+                                                    mask |= (1ULL << ((i * 8) + j));
+                                                }
+                                            }
+                                        }
                                     }
                                 }
-                                if (!found)
-                                {
-                                    new_offset = unique_children.size();
-                                    unique_children.push_back(patched_ptr);
-                                }
-
-                                u32 new_chunk = 0b1000 | (new_offset & 0b0111);
-                                new_desc |= (new_chunk << (oct * 4));
                             }
                         }
-                        current_level[i] = new_desc;
-                        for (size_t j = 0; j < unique_children.size(); ++j) current_level[i + 1 + j] = unique_children[j];
+
+                        auto it = leaf_dict.find(mask);
+                        if (it != leaf_dict.end()) return it->second;
+
+                        u32 new_idx = geometry_leaves_.size();
+                        geometry_leaves_.push_back(mask);
+                        leaf_dict[mask] = new_idx;
+                        return new_idx;
                     }
 
-                    i += 1 + old_child_count;
-                }
-
-                std::sort(node_starts.begin(), node_starts.end(), [&](u32 a, u32 b)
+                    // Węzły Wewnętrzne (Budowa 32-bitowego deskryptora)
+                    InternalNodeData node_data;
+                    node_data.desc = 0;
+                    for (int i = 0; i < 8; ++i)
                     {
-                        u32 descA = current_level[a];
-                        u32 descB = current_level[b];
-                        if (descA != descB) return descA < descB;
-
-                        u32 child_count = (descA == 0) ? 0 : (max_offset(descA) + 1);
-                        for (u32 c = 1; c <= child_count; ++c)
+                        if (n.child_offsets[i] >= 0)
                         {
-                            if (current_level[a + c] != current_level[b + c])
-                                return current_level[a + c] < current_level[b + c];
-                        }
-                        return false;
-                    });
+                            u32 child_idx = static_cast<u32>(n.children_base + n.child_offsets[i]);
+                            if (child_idx < n_nodes) {
+                                u32 child_dag_idx = self(self, child_idx, current_depth + 1);
 
-                std::unordered_map<u32, u32> new_remap;
-
-                u32 first_old = node_starts[0];
-                u32 first_desc = current_level[first_old];
-                u32 first_child_count = (first_desc == 0) ? 0 : (max_offset(first_desc) + 1);
-
-                u32 current_compact_start = nodes_.size();
-                new_remap[first_old] = current_compact_start;
-                last_root_index = current_compact_start;
-
-                nodes_.push_back(first_desc);
-                for (u32 c = 1; c <= first_child_count; ++c) nodes_.push_back(current_level[first_old + c]);
-
-                u32 last_unique_compact_start = current_compact_start;
-
-                for (size_t s = 1; s < node_starts.size(); ++s)
-                {
-                    u32 curr_old = node_starts[s];
-                    u32 prev_old = node_starts[s - 1];
-
-                    bool is_same = true;
-                    u32 desc = current_level[curr_old];
-                    if (desc != current_level[prev_old]) is_same = false;
-                    else
-                    {
-                        u32 child_count = (desc == 0) ? 0 : (max_offset(desc) + 1);
-                        for (u32 c = 1; c <= child_count; ++c)
-                        {
-                            if (current_level[curr_old + c] != current_level[prev_old + c])
+                            u32 offset = 0;
+                            auto it = std::find(node_data.children.begin(), node_data.children.end(), child_dag_idx);
+                            if (it != node_data.children.end())
                             {
-                                is_same = false; break;
+                                offset = std::distance(node_data.children.begin(), it);
+                            }
+                            else
+                            {
+                                offset = node_data.children.size();
+                                node_data.children.push_back(child_dag_idx);
+                            }
+
+                            u32 chunk = 0b1000 | (offset & 0b0111);
+                            node_data.desc |= (chunk << (i * 4));
                             }
                         }
                     }
 
-                    if (is_same) new_remap[curr_old] = last_unique_compact_start;
-                    else
-                    {
-                        u32 new_compact_start = nodes_.size();
-                        new_remap[curr_old] = new_compact_start;
-                        last_unique_compact_start = new_compact_start;
-                        last_root_index = new_compact_start;
+                    auto it = node_dict.find(node_data);
+                    if (it != node_dict.end()) return it->second;
 
-                        u32 child_count = (desc == 0) ? 0 : (max_offset(desc) + 1);
-                        nodes_.push_back(desc);
-                        for (u32 c = 1; c <= child_count; ++c) nodes_.push_back(current_level[curr_old + c]);
-                    }
-                }
-                remap_table = std::move(new_remap);
-            }
-            std::cout << "\nBuild complete!\n";
+                    u32 new_idx = nodes_.size();
+                    nodes_.push_back(node_data.desc);
+                    for (u32 c : node_data.children) nodes_.push_back(c);
 
-            return nodes_.empty() ? 0 : last_root_index;
+                    node_dict[node_data] = new_idx;
+                    return new_idx;
+                };
+
+            u32 final_root_idx = dfs(dfs, root_idx, 0);
+
+            std::printf("[V3 Builder] Kompresja zakonczona! \n\n");
+            return final_root_idx;
         }
-        // =========================================================================
-        // INTERSECTOR (Raytracing)
-        // =========================================================================
 
         Dag::Hit Dag::intersect(const Ray& ray, u8 depth, u32 root_index) const noexcept
         {

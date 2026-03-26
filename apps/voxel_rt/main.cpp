@@ -56,29 +56,17 @@ int main()
     //dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/1024c.vdag");
 
     vrt::v2::Dag dag;
-    int tree_depth = 14;
-    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/8192c.bin");
-    //dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/1024c.vdag");
+    //int tree_depth = 10;
+    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/octree/san-miguel1024_1.octree");
 
-    /*tree_depth = 11;
-    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/2048c.bin");
-    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/2048c.vdag");
-
-    tree_depth = 12;
-    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/4096c.bin");
-    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/4096c.vdag");
-
-    tree_depth = 13;
-    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/8192c.bin");
-    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/8192c.vdag");
-
-    tree_depth = 14;
-    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/16384c.bin");
-    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/16384c.vdag");
-
-    tree_depth = 15;
-    root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/32768c.bin");
-    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/32768c.vdag");*/
+    //int tree_depth = 11;
+    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/octree/san-miguel2048_8.octree");
+    
+    int tree_depth = 12;
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/octree/san-miguel4096_64.octree");
+    
+    //int tree_depth = 13;
+    //auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/octree/san-miguel8192_512.octree");
 
     // Pozycja startowa i speed kamery = 2^(depth-4), czyli ~1/16 rozmiaru sceny
     const float cam_scale = static_cast<float>(1u << std::max(0, tree_depth - 4));
