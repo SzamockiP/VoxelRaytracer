@@ -91,7 +91,7 @@ namespace vrt
 
             size_t leaves_size_bytes() const
             {
-                return geometry_leaves_.size() * sizeof(u8);
+                return geometry_leaves_.size() * sizeof(u64);
             }
 
             size_t total_size_bytes() const
@@ -135,7 +135,7 @@ namespace vrt
 
         private:
             std::vector<u32> nodes_;
-            std::vector<u8> geometry_leaves_;
+            std::vector<u64> geometry_leaves_;
 
             static u8 max_offset(u32 val)
             {

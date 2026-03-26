@@ -87,33 +87,22 @@ namespace vrt
         // BUILDER (Kompresja SVO -> SVDAG)
         // =========================================================================
 
-        vrt::u32 Dag::build(u8 depth, const std::filesystem::path& filepath)
+        vrt::u32 vrt::v2::Dag::build(u8 depth, const std::filesystem::path& filepath)
         {
             if (!std::filesystem::exists(filepath))
-            {
                 throw std::runtime_error("Error: vrt::v2::Dag::build filepath doesn't exist.");
-            }
 
             std::ifstream file(filepath, std::ios::binary);
 
             nodes_.clear();
             geometry_leaves_.clear();
 
-            std::unordered_map<u8, u32> leaf_dict;
+            std::unordered_map<u64, u32> leaf_dict;
 
-            auto get_or_add_leaf = [&](TempNode& leaf) -> u32
+            auto get_or_add_leaf = [&](u64 mask) -> u32
                 {
-                    u8 mask = 0;
-                    for (int i = 0; i < 8; ++i)
-                    {
-                        if (leaf.valid[i]) mask |= (1 << i);
-                    }
-
                     auto it = leaf_dict.find(mask);
-                    if (it != leaf_dict.end())
-                    {
-                        return it->second;
-                    }
+                    if (it != leaf_dict.end()) return it->second;
 
                     u32 idx = geometry_leaves_.size();
                     leaf_dict[mask] = idx;
@@ -121,16 +110,12 @@ namespace vrt
                     return idx;
                 };
 
-            std::vector<std::vector<u32>> level_buffers(depth);
-            std::vector<TempNode> temp_nodes(depth);
-            TempNode temp_leaf;
+            u8 num_node_levels = (depth > 2) ? depth - 2 : 1;
+            std::vector<std::vector<u32>> level_buffers(num_node_levels);
+            std::vector<TempNode> temp_nodes(num_node_levels);
 
 #pragma pack(push, 1)
-            struct VoxelData
-            {
-                u64 morton;
-                Voxel voxel;
-            };
+            struct VoxelData { u64 morton; Voxel voxel; };
 #pragma pack(pop)
 
             VoxelData voxel_data;
@@ -144,15 +129,17 @@ namespace vrt
                     return (63 - std::countl_zero(diff)) / 3;
                 };
 
-            if (!file.read(reinterpret_cast<char*>(&voxel_data), sizeof(VoxelData)))
-                return 0;
-
+            if (!file.read(reinterpret_cast<char*>(&voxel_data), sizeof(VoxelData))) return 0;
             processed_voxels++;
 
             u64 last_morton = voxel_data.morton;
-            temp_leaf.add(last_morton & 0b111, 0);
+            u64 current_leaf_mask = 0;
 
-            // --- FAZA 1 ---
+            current_leaf_mask |= (1ULL << (last_morton & 0x3F));
+
+            // =========================================================================
+            // FAZA 1: BUDOWANIE SVO (z 64-bitowymi liśćmi)
+            // =========================================================================
             while (file.read(reinterpret_cast<char*>(&voxel_data), sizeof(VoxelData)))
             {
                 processed_voxels++;
@@ -162,68 +149,75 @@ namespace vrt
                     std::printf("\r[Phase 1] Building SVO: %zu/%zu [%.2f%%]", processed_voxels, total_voxels, percent);
                 }
 
-                if ((last_morton >> 3) == (voxel_data.morton >> 3))
+                if ((last_morton >> 6) == (voxel_data.morton >> 6))
                 {
-                    temp_leaf.add(voxel_data.morton & 0b111, 0);
+                    current_leaf_mask |= (1ULL << (voxel_data.morton & 0x3F));
                 }
                 else
                 {
-                    u32 node_idx = get_or_add_leaf(temp_leaf);
-                    temp_leaf.clear();
+                    u32 node_idx = get_or_add_leaf(current_leaf_mask);
+                    current_leaf_mask = 0;
 
                     int current_level = 0;
-                    temp_nodes[current_level].add((last_morton >> 3) & 0b111, node_idx);
+                    temp_nodes[current_level].add((last_morton >> 6) & 0b111, node_idx);
 
                     int max_level = calculate_divergence(last_morton, voxel_data.morton);
-                    max_level = std::min(max_level, (int)depth - 1);
+                    int target_level = max_level - 2;
+                    if (target_level < 0) target_level = 0;
+                    target_level = std::min(target_level, (int)num_node_levels - 1);
 
-                    while (current_level < max_level - 1)
+                    while (current_level < target_level)
                     {
-                        node_idx = temp_nodes[current_level].emit(level_buffers[current_level + 1]);
+                        node_idx = temp_nodes[current_level].emit(level_buffers[current_level]);
                         temp_nodes[current_level].clear();
                         ++current_level;
 
-                        if (current_level >= depth - 1) break;
+                        
+                        if (current_level >= num_node_levels) break;
 
-                        u8 parent_octant = (last_morton >> (3 * (current_level + 1))) & 0b111;
+                        u8 parent_octant = (last_morton >> (3 * (current_level + 2))) & 0b111;
                         temp_nodes[current_level].add(parent_octant, node_idx);
                     }
 
-                    temp_leaf.add(voxel_data.morton & 0b111, 0);
+                    current_leaf_mask |= (1ULL << (voxel_data.morton & 0x3F));
                 }
                 last_morton = voxel_data.morton;
             }
             std::cout << "\n";
 
-            if (!temp_leaf.is_empty())
+            if (current_leaf_mask != 0)
             {
-                u32 node_idx = get_or_add_leaf(temp_leaf);
-                temp_leaf.clear();
-                temp_nodes[0].add((last_morton >> 3) & 0b111, node_idx);
+                u32 node_idx = get_or_add_leaf(current_leaf_mask);
+                temp_nodes[0].add((last_morton >> 6) & 0b111, node_idx);
             }
 
-            for (int current_level = 0; current_level < depth - 1; ++current_level)
+            // NAPRAWIONE: Pętla idzie do pełnego num_node_levels
+            for (int current_level = 0; current_level < num_node_levels; ++current_level)
             {
                 if (!temp_nodes[current_level].is_empty())
                 {
-                    u32 node_idx = temp_nodes[current_level].emit(level_buffers[current_level + 1]);
+                    // NAPRAWIONE: Zrzucamy na current_level
+                    u32 node_idx = temp_nodes[current_level].emit(level_buffers[current_level]);
                     temp_nodes[current_level].clear();
 
-                    if (current_level + 1 < depth - 1)
+                    if (current_level + 1 < num_node_levels)
                     {
-                        u8 parent_octant = (last_morton >> (3 * (current_level + 2))) & 0b111;
+                        u8 parent_octant = (last_morton >> (3 * (current_level + 3))) & 0b111;
                         temp_nodes[current_level + 1].add(parent_octant, node_idx);
                     }
                 }
             }
 
-            // --- FAZA 2 ---
+            // =========================================================================
+            // FAZA 2: KOMPRESJA BOTTOM-UP (Deduplikacja DAG)
+            // =========================================================================
+
             std::unordered_map<u32, u32> remap_table;
             u32 last_root_index = 0;
 
-            for (int d = 1; d < depth; ++d) // WAŻNE: Od d=1
+            for (int d = 0; d < num_node_levels; ++d)
             {
-                std::printf("\r[Phase 2] Compressing level %d/%d", d + 1, depth);
+                std::printf("\r[Phase 2] Compressing level %d/%d", d + 1, num_node_levels);
                 auto& current_level = level_buffers[d];
                 if (current_level.empty()) continue;
 
@@ -235,7 +229,7 @@ namespace vrt
                     u32 desc = current_level[i];
                     u32 old_child_count = (desc == 0) ? 0 : (max_offset(desc) + 1);
 
-                    if (d > 1)
+                    if (d > 0)
                     {
                         u32 new_desc = 0;
                         std::vector<u32> unique_children;
@@ -255,9 +249,7 @@ namespace vrt
                                 {
                                     if (unique_children[j] == patched_ptr)
                                     {
-                                        new_offset = j;
-                                        found = true;
-                                        break;
+                                        new_offset = j; found = true; break;
                                     }
                                 }
                                 if (!found)
@@ -270,12 +262,8 @@ namespace vrt
                                 new_desc |= (new_chunk << (oct * 4));
                             }
                         }
-
                         current_level[i] = new_desc;
-                        for (size_t j = 0; j < unique_children.size(); ++j)
-                        {
-                            current_level[i + 1 + j] = unique_children[j];
-                        }
+                        for (size_t j = 0; j < unique_children.size(); ++j) current_level[i + 1 + j] = unique_children[j];
                     }
 
                     i += 1 + old_child_count;
@@ -285,16 +273,13 @@ namespace vrt
                     {
                         u32 descA = current_level[a];
                         u32 descB = current_level[b];
-
                         if (descA != descB) return descA < descB;
 
                         u32 child_count = (descA == 0) ? 0 : (max_offset(descA) + 1);
                         for (u32 c = 1; c <= child_count; ++c)
                         {
                             if (current_level[a + c] != current_level[b + c])
-                            {
                                 return current_level[a + c] < current_level[b + c];
-                            }
                         }
                         return false;
                     });
@@ -321,10 +306,7 @@ namespace vrt
 
                     bool is_same = true;
                     u32 desc = current_level[curr_old];
-                    if (desc != current_level[prev_old])
-                    {
-                        is_same = false;
-                    }
+                    if (desc != current_level[prev_old]) is_same = false;
                     else
                     {
                         u32 child_count = (desc == 0) ? 0 : (max_offset(desc) + 1);
@@ -332,16 +314,12 @@ namespace vrt
                         {
                             if (current_level[curr_old + c] != current_level[prev_old + c])
                             {
-                                is_same = false;
-                                break;
+                                is_same = false; break;
                             }
                         }
                     }
 
-                    if (is_same)
-                    {
-                        new_remap[curr_old] = last_unique_compact_start;
-                    }
+                    if (is_same) new_remap[curr_old] = last_unique_compact_start;
                     else
                     {
                         u32 new_compact_start = nodes_.size();
@@ -354,14 +332,12 @@ namespace vrt
                         for (u32 c = 1; c <= child_count; ++c) nodes_.push_back(current_level[curr_old + c]);
                     }
                 }
-
                 remap_table = std::move(new_remap);
             }
             std::cout << "\nBuild complete!\n";
 
             return nodes_.empty() ? 0 : last_root_index;
         }
-
         // =========================================================================
         // INTERSECTOR (Raytracing)
         // =========================================================================
@@ -435,35 +411,59 @@ namespace vrt
                 u32 child_ptr = 0;
                 bool descend = false;
 
-                // 1. ODCZYT W ZALEŻNOŚCI OD GŁĘBOKOŚCI
-                // Musimy wiedzieć z jakiej tablicy czytać ZANIM pobierzemy dane!
-                if (depth > 1)
+                // ==========================================================
+                // 1. ODCZYT W ZALEŻNOŚCI OD GŁĘBOKOŚCI (WIRTUALNE DRZEWO V3)
+                // ==========================================================
+
+                if (depth > 2) // <--- NAPRAWIONE! Węzły wewnętrzne kończą się wyżej!
                 {
-                    // Węzły wewnętrzne (poziom 2 i wyżej)
+                    // Węzły Wewnętrzne (Odczyt z tablicy 32-bitowej nodes_)
                     u32 desc = nodes_[current_node_idx];
                     u32 child_chunk = (desc >> (4 * true_oct)) & 0xF;
                     if (child_chunk & 0b1000)
                     {
                         u32 offset = child_chunk & 0b0111;
                         child_ptr = nodes_[current_node_idx + 1 + offset];
-                        descend = true; // Znalazł drogę w dół!
+                        descend = true;
                     }
                 }
-                else
+                else if (depth == 2) // <--- WIRTUALNY POZIOM 1 (Górna część u64)
                 {
-                    // depth == 1! current_node_idx to TERAZ indeks do tablicy liści!
-                    u8 leaf_mask = geometry_leaves_[current_node_idx];
-                    if (leaf_mask & (1 << true_oct))
+                    // Tutaj wchodzimy w nasz spakowany blok 4x4x4.
+                    // Analizujemy u64 jako 8 bloków po 8 bitów. Szukamy odpowiedniego bajta.
+                    u64 leaf_mask = geometry_leaves_[current_node_idx];
+                    u8 chunk = (leaf_mask >> (true_oct * 8)) & 0xFF;
+
+                    if (chunk != 0)
                     {
-                        hit_voxel = true; // BUM! Uderzenie w geometrię woksela.
+                        // Blok 2x2x2 nie jest pusty! "Schodzimy" głębiej. 
+                        // Indeks zostaje TEN SAM, bo fizycznie nie zmieniamy miejsca w pamięci RAM!
+                        child_ptr = current_node_idx;
+                        descend = true;
+                    }
+                }
+                else // depth == 1 <--- WIRTUALNY POZIOM 0 (Dolna część u64)
+                {
+                    // Sprawdzamy konkretny bit wewnątrz wybranego wcześniej 1 bajta
+                    u64 leaf_mask = geometry_leaves_[current_node_idx];
+
+                    // Magia: Odzyskujemy oktant rodzica ze stosu, by wiedzieć który z 8 bajtów sprawdzić
+                    std::uint8_t parent_true_oct = stack[sp - 1].oct_idx ^ a;
+                    u8 chunk = (leaf_mask >> (parent_true_oct * 8)) & 0xFF;
+
+                    if (chunk & (1 << true_oct))
+                    {
+                        hit_voxel = true; // Bezpośrednie trafienie w sam bit geometrii!
                     }
                 }
 
+                // ==========================================================
                 // 2. OBSŁUGA TRAFIENIA
+                // ==========================================================
                 if (hit_voxel)
                 {
                     Voxel v;
-                    v.rgbe = 0xFFFFFFFF; // Biały wypełniacz
+                    v.rgbe = 0xFFFFFFFF; // Biały piksel geometrii
 
                     glm::vec3 n{ 0.f, 0.f, 0.f };
                     if (last_axis == 0) n.x = -1.f;
@@ -477,7 +477,9 @@ namespace vrt
                     return { .t = t_enter, .normal = n, .voxel = v };
                 }
 
+                // ==========================================================
                 // 3. SCHODZENIE W DÓŁ (DESCEND)
+                // ==========================================================
                 if (descend)
                 {
                     float t_next = tx;
@@ -495,7 +497,7 @@ namespace vrt
                     tym += ((oct_idx & 2) ? +offset_pos : -offset_pos) * invD.y;
                     tzm += ((oct_idx & 4) ? +offset_pos : -offset_pos) * invD.z;
 
-                    current_node_idx = child_ptr; // Wskaźnik z nodes_ -> na kolejny nodes_ LUB geometry_leaves_
+                    current_node_idx = child_ptr;
                     t_exit = child_t_exit;
                     --depth;
 
@@ -510,7 +512,9 @@ namespace vrt
                     continue;
                 }
 
+                // ==========================================================
                 // 4. PRZESUNIĘCIE / WYJŚCIE W GÓRĘ (ADVANCE / POP)
+                // ==========================================================
                 while (true)
                 {
                     int axis = 0;
@@ -552,7 +556,6 @@ namespace vrt
                     break;
                 }
             }
-        }
-
+}
     } // namespace v2
 } // namespace vrt

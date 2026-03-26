@@ -56,8 +56,8 @@ int main()
     //dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/1024c.vdag");
 
     vrt::v2::Dag dag;
-    int tree_depth = 12;
-    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/4096c.bin");
+    int tree_depth = 14;
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/8192c.bin");
     //dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/1024c.vdag");
 
     /*tree_depth = 11;
