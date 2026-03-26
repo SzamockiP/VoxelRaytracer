@@ -1,4 +1,4 @@
-﻿#include <vector>
+#include <vector>
 #include <filesystem>
 
 #include <vrt/core/types.hpp>
@@ -93,22 +93,10 @@ namespace vrt
                 return nodes_.size() * sizeof(u32);
             }
 
-            // Rozmiar atrybutów (kolorów RGBA) w bajtach
-            size_t payload_size_bytes() const
-            {
-                return leaves_.size() * sizeof(u32);
-            }
-
             // Całkowity rozmiar struktury w pamięci (w bajtach)
             size_t total_size_bytes() const
             {
-                return topology_size_bytes() + payload_size_bytes();
-            }
-
-            // Liczba unikalnych liści (zdeduplikowanych kolorów)
-            size_t num_leaves() const
-            {
-                return leaves_.size();
+                return topology_size_bytes();
             }
 
             // Liczba unikalnych węzłów topologicznych
@@ -127,25 +115,20 @@ namespace vrt
                 return count;
             }
 
-            // Gotowa funkcja wypisująca ładne podsumowanie w konsoli
             void print_stats() const
             {
                 double topo_mb = topology_size_bytes() / (1024.0 * 1024.0);
-                double payload_mb = payload_size_bytes() / (1024.0 * 1024.0);
                 double total_mb = total_size_bytes() / (1024.0 * 1024.0);
 
                 std::printf("\n================ SVDAG V2.0 STATS ================\n");
                 std::printf("Unique Nodes : %zu\n", num_nodes());
-                std::printf("Unique Leaves: %zu\n", num_leaves());
                 std::printf("Topology Size: %zu B (%.2f MB)\n", topology_size_bytes(), topo_mb);
-                std::printf("Payload Size : %zu B (%.2f MB)\n", payload_size_bytes(), payload_mb);
                 std::printf("Total Size   : %zu B (%.2f MB)\n", total_size_bytes(), total_mb);
                 std::printf("==================================================\n\n");
             }
 
         private:
             std::vector<u32> nodes_;
-            std::vector<u32> leaves_;
 
             static u32 pmax(u32 x, u32 y)
             {

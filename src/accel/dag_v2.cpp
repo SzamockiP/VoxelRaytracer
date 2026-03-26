@@ -1,4 +1,4 @@
-﻿#include <vrt/accel/dag_v2.hpp>
+#include <vrt/accel/dag_v2.hpp>
 #include <iostream>
 #include <unordered_map>
 #include <fstream>
@@ -67,6 +67,23 @@ struct TempNode
         }
         return start_idx;
     }
+
+    // Wypluwa czysty liść geometryczny (ZERO wskaźników payloadu!)
+    vrt::u32 emit_geometry_leaf(std::vector<vrt::u32>& level_buffer)
+    {
+        vrt::u32 descriptor = 0;
+        for (int i = 0; i < 8; ++i)
+        {
+            if (valid[i])
+            {
+                // Zapalamy TYLKO bit Valid (1000). Zero offsetów, bo nie ma wskaźników!
+                descriptor |= (0b1000 << (i * 4));
+            }
+        }
+        vrt::u32 start_idx = level_buffer.size();
+        level_buffer.push_back(descriptor); // Pchamy do pamięci same 4 bajty!
+        return start_idx;
+    }
 };
 
 vrt::u32 vrt::v2::Dag::build(u8 depth, const std::filesystem::path& filepath)
@@ -78,11 +95,7 @@ vrt::u32 vrt::v2::Dag::build(u8 depth, const std::filesystem::path& filepath)
 
     std::ifstream file(filepath, std::ios::binary);
 
-    leaves_.clear();
     nodes_.clear();
-
-    // Słownik do deduplikacji liści w locie (szybkie u32 -> u32)
-    std::unordered_map<u32, u32> leaf_color_map;
 
     // Bufory surowego SVO dla każdego poziomu (tylko z kompresją Intra-Node)
     std::vector<std::vector<u32>> level_buffers(depth);
@@ -108,26 +121,13 @@ vrt::u32 vrt::v2::Dag::build(u8 depth, const std::filesystem::path& filepath)
             return (63 - std::countl_zero(diff)) / 3;
         };
 
-    // Funkcja dodająca kolor i zwracająca jego absolutny indeks w wektorze leaves_
-    auto get_or_add_leaf = [&](Voxel v) -> u32
-        {
-            if (leaf_color_map.find(v.rgbe) == leaf_color_map.end())
-            {
-                u32 idx = leaves_.size();
-                leaf_color_map[v.rgbe] = idx;
-                leaves_.push_back(v.rgbe);
-                return idx;
-            }
-            return leaf_color_map[v.rgbe];
-        };
-
     if (!file.read(reinterpret_cast<char*>(&voxel_data), sizeof(VoxelData)))
         return 0;
 
     processed_voxels++;
 
     u64 last_morton = voxel_data.morton;
-    temp_leaf.add(last_morton & 0b111, get_or_add_leaf(voxel_data.voxel));
+    temp_leaf.add(last_morton & 0b111, 0);
 
     // =========================================================================
     // FAZA 1: BUDOWANIE SVO ORAZ KOMPRESJA WEWNĄTRZ-WĘZŁOWA (Intra-Node)
@@ -143,12 +143,12 @@ vrt::u32 vrt::v2::Dag::build(u8 depth, const std::filesystem::path& filepath)
 
         if ((last_morton >> 3) == (voxel_data.morton >> 3))
         {
-            temp_leaf.add(voxel_data.morton & 0b111, get_or_add_leaf(voxel_data.voxel));
+            temp_leaf.add(voxel_data.morton & 0b111, 0);
         }
         else
         {
             // Emisja poziomu liści (zwraca indeks w level_buffers[0])
-            u32 node_idx = temp_leaf.emit(level_buffers[0]);
+            u32 node_idx = temp_leaf.emit_geometry_leaf(level_buffers[0]);
             temp_leaf.clear();
 
             int current_level = 0;
@@ -170,7 +170,7 @@ vrt::u32 vrt::v2::Dag::build(u8 depth, const std::filesystem::path& filepath)
                 temp_nodes[current_level].add(parent_octant, node_idx);
             }
 
-            temp_leaf.add(voxel_data.morton & 0b111, get_or_add_leaf(voxel_data.voxel));
+            temp_leaf.add(voxel_data.morton & 0b111, 0);
         }
         last_morton = voxel_data.morton;
     }
@@ -179,7 +179,7 @@ vrt::u32 vrt::v2::Dag::build(u8 depth, const std::filesystem::path& filepath)
     // Domknięcie ostatniego promienia DFS
     if (!temp_leaf.is_empty())
     {
-        u32 node_idx = temp_leaf.emit(level_buffers[0]);
+        u32 node_idx = temp_leaf.emit_geometry_leaf(level_buffers[0]);
         temp_leaf.clear();
         temp_nodes[0].add((last_morton >> 3) & 0b111, node_idx);
     }
@@ -214,34 +214,60 @@ vrt::u32 vrt::v2::Dag::build(u8 depth, const std::filesystem::path& filepath)
         auto& current_level = level_buffers[d];
         if (current_level.empty()) continue;
 
-        // 1. Łatanie wskaźników dzieci na zdeduplikowane węzły z niższego poziomu
-        // Uwaga: Dla d == 0 omijamy, bo dzieci wskazują na `leaves_` (co jest już poprawne!)
-        if (d > 0)
-        {
-            u32 i = 0;
-            while (i < current_level.size())
-            {
-                u32 desc = current_level[i];
-                u32 child_count = (desc == 0) ? 0 : (max_offset(desc) + 1);
-
-                for (u32 c = 1; c <= child_count; ++c)
-                {
-                    u32 old_child_ptr = current_level[i + c];
-                    current_level[i + c] = remap_table[old_child_ptr]; // Patch
-                }
-                i += 1 + child_count;
-            }
-        }
-
-        // 2. Szukanie wskaźników startowych węzłów (przygotowanie do sortowania)
+        // 1 & 2. Szukanie wskaźników startowych węzłów ORAZ łatanie/kompresja (Intra-Node po Remapie)
         std::vector<u32> node_starts;
         u32 i = 0;
         while (i < current_level.size())
         {
             node_starts.push_back(i);
             u32 desc = current_level[i];
-            u32 child_count = (desc == 0) ? 0 : (max_offset(desc) + 1);
-            i += 1 + child_count;
+            // Ważne: dla poziomu liści (d == 0) nie ma żadnych dzieci (wskaźników)!
+            u32 old_child_count = (d == 0 || desc == 0) ? 0 : (max_offset(desc) + 1);
+
+            if (d > 0)
+            {
+                u32 new_desc = 0;
+                std::vector<u32> unique_children;
+
+                for (int oct = 0; oct < 8; ++oct)
+                {
+                    u32 chunk = (desc >> (oct * 4)) & 0xF;
+                    if (chunk & 0b1000)
+                    {
+                        u8 old_offset = chunk & 0b0111;
+                        u32 old_child_ptr = current_level[i + 1 + old_offset];
+                        u32 patched_ptr = remap_table.at(old_child_ptr);
+
+                        u32 new_offset = 0;
+                        bool found = false;
+                        for (size_t j = 0; j < unique_children.size(); ++j)
+                        {
+                            if (unique_children[j] == patched_ptr)
+                            {
+                                new_offset = j;
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found)
+                        {
+                            new_offset = unique_children.size();
+                            unique_children.push_back(patched_ptr);
+                        }
+
+                        u32 new_chunk = 0b1000 | (new_offset & 0b0111);
+                        new_desc |= (new_chunk << (oct * 4));
+                    }
+                }
+
+                current_level[i] = new_desc;
+                for (size_t j = 0; j < unique_children.size(); ++j)
+                {
+                    current_level[i + 1 + j] = unique_children[j];
+                }
+            }
+
+            i += 1 + old_child_count;
         }
 
         // 3. Sortowanie Pośrednie
@@ -252,7 +278,7 @@ vrt::u32 vrt::v2::Dag::build(u8 depth, const std::filesystem::path& filepath)
 
                 if (descA != descB) return descA < descB;
 
-                u32 child_count = (descA == 0) ? 0 : (max_offset(descA) + 1);
+                u32 child_count = (d == 0 || descA == 0) ? 0 : (max_offset(descA) + 1);
                 for (u32 c = 1; c <= child_count; ++c)
                 {
                     if (current_level[a + c] != current_level[b + c])
@@ -269,7 +295,7 @@ vrt::u32 vrt::v2::Dag::build(u8 depth, const std::filesystem::path& filepath)
         // Zapisz pierwszy element jako unikat
         u32 first_old = node_starts[0];
         u32 first_desc = current_level[first_old];
-        u32 first_child_count = (first_desc == 0) ? 0 : (max_offset(first_desc) + 1);
+        u32 first_child_count = (d == 0 || first_desc == 0) ? 0 : (max_offset(first_desc) + 1);
 
         u32 current_compact_start = nodes_.size();
         new_remap[first_old] = current_compact_start;
@@ -294,7 +320,7 @@ vrt::u32 vrt::v2::Dag::build(u8 depth, const std::filesystem::path& filepath)
             }
             else
             {
-                u32 child_count = (desc == 0) ? 0 : (max_offset(desc) + 1);
+                u32 child_count = (d == 0 || desc == 0) ? 0 : (max_offset(desc) + 1);
                 for (u32 c = 1; c <= child_count; ++c)
                 {
                     if (current_level[curr_old + c] != current_level[prev_old + c])
@@ -318,7 +344,7 @@ vrt::u32 vrt::v2::Dag::build(u8 depth, const std::filesystem::path& filepath)
                 last_unique_compact_start = new_compact_start;
                 last_root_index = new_compact_start;
 
-                u32 child_count = (desc == 0) ? 0 : (max_offset(desc) + 1);
+                u32 child_count = (d == 0 || desc == 0) ? 0 : (max_offset(desc) + 1);
                 nodes_.push_back(desc);
                 for (u32 c = 1; c <= child_count; ++c) nodes_.push_back(current_level[curr_old + c]);
             }
@@ -454,10 +480,10 @@ vrt::v2::Dag::Hit vrt::v2::Dag::intersect(const Ray& ray, u8 depth, u32 root_ind
             }
             else
             {
-                // Jesteśmy na depth == 1, uderzyliśmy w liść!
-                // W tym wypadku child_ptr z nodes_ to tak naprawdę indeks do wektora leaves_
+                // Jesteśmy na depth == 1, uderzyliśmy w liść geometryczny!
+                // Brak child_ptr, wystarczy zwrócić trafienie na bieli.
                 Voxel v;
-                v.rgbe = leaves_[child_ptr];
+                v.rgbe = 0xFFFFFFFF; // Biały kolor jako wypełniacz
 
                 glm::vec3 n{ 0.f, 0.f, 0.f };
                 if (last_axis == 0) n.x = -1.f;
