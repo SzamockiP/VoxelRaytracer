@@ -16,6 +16,7 @@
 #include <vrt/gfx/presenter.hpp>
 
 #include <vrt/accel/dag_v1.hpp>
+#include <vrt/accel/dag_v2.hpp>
 
 using namespace vrt;
 
@@ -49,10 +50,15 @@ int main()
 
     
 
-    vrt::v1::Dag dag;
+    /*vrt::v1::Dag dag;
     int tree_depth = 10;
-    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/1024c.bin");
-    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/1024c.vdag");
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/1024c.bin");*/
+    //dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/1024c.vdag");
+
+    vrt::v2::Dag dag;
+    int tree_depth = 12;
+    auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/4096c.bin");
+    //dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/1024c.vdag");
 
     /*tree_depth = 11;
     root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/2048c.bin");
@@ -90,13 +96,14 @@ int main()
 
     //auto root = dag.load("C:/Users/Piotr/Downloads/San_Miguel/vdag/2048.vdag");
 
-    if (root.descriptor == 0)
+    /*if (root.descriptor == 0)
     {
         std::cerr << "Blad: DAG jest pusty!\n";
         return -1;
-    }
+    }*/
 
-    dag.debug();
+    //dag.debug();
+    dag.print_stats();
 
     float current_frame_time = 0.0f;
     float last_frame_time = 0.0f;
@@ -130,7 +137,8 @@ int main()
 
                 glm::vec3 d = normalize(camera.get_ray(u, v).direction);
                 Ray r{ camera.position(), d, 1.0f / d };
-                v1::Dag::Hit result = dag.intersect(r, tree_depth, root);
+                v2::Dag::Hit result = dag.intersect(r, tree_depth, root);
+                //v1::Dag::Hit result = dag.intersect(r, tree_depth, root);
 
                 if (result.t == std::numeric_limits<float>::infinity())
                 {

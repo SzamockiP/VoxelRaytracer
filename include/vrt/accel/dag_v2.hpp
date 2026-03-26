@@ -1,4 +1,4 @@
-#include <vector>
+﻿#include <vector>
 #include <filesystem>
 
 #include <vrt/core/types.hpp>
@@ -82,9 +82,66 @@ namespace vrt
                 return nodes_[index + offset + 1];
             }
 
-            Hit intersect(const Ray& ray, u8 depth, Node root) const noexcept;
+            Hit intersect(const Ray& ray, u8 depth, u32 root_index) const noexcept;
 
-            Node build(u8 depth, const std::filesystem::path& filepath);
+            u32 build(u8 depth, const std::filesystem::path& filepath);
+
+
+            // Rozmiar samej topologii (geometrii i wskaźników) w bajtach
+            size_t topology_size_bytes() const
+            {
+                return nodes_.size() * sizeof(u32);
+            }
+
+            // Rozmiar atrybutów (kolorów RGBA) w bajtach
+            size_t payload_size_bytes() const
+            {
+                return leaves_.size() * sizeof(u32);
+            }
+
+            // Całkowity rozmiar struktury w pamięci (w bajtach)
+            size_t total_size_bytes() const
+            {
+                return topology_size_bytes() + payload_size_bytes();
+            }
+
+            // Liczba unikalnych liści (zdeduplikowanych kolorów)
+            size_t num_leaves() const
+            {
+                return leaves_.size();
+            }
+
+            // Liczba unikalnych węzłów topologicznych
+            size_t num_nodes() const
+            {
+                size_t count = 0;
+                size_t i = 0;
+                // Skaczemy po tablicy dokładnie tak samo jak w fazie kompresji
+                while (i < nodes_.size())
+                {
+                    count++;
+                    u32 desc = nodes_[i];
+                    u32 child_count = (desc == 0) ? 0 : (max_offset(desc) + 1);
+                    i += 1 + child_count; // Skok o deskryptor + jego wskaźniki
+                }
+                return count;
+            }
+
+            // Gotowa funkcja wypisująca ładne podsumowanie w konsoli
+            void print_stats() const
+            {
+                double topo_mb = topology_size_bytes() / (1024.0 * 1024.0);
+                double payload_mb = payload_size_bytes() / (1024.0 * 1024.0);
+                double total_mb = total_size_bytes() / (1024.0 * 1024.0);
+
+                std::printf("\n================ SVDAG V2.0 STATS ================\n");
+                std::printf("Unique Nodes : %zu\n", num_nodes());
+                std::printf("Unique Leaves: %zu\n", num_leaves());
+                std::printf("Topology Size: %zu B (%.2f MB)\n", topology_size_bytes(), topo_mb);
+                std::printf("Payload Size : %zu B (%.2f MB)\n", payload_size_bytes(), payload_mb);
+                std::printf("Total Size   : %zu B (%.2f MB)\n", total_size_bytes(), total_mb);
+                std::printf("==================================================\n\n");
+            }
 
         private:
             std::vector<u32> nodes_;
@@ -99,10 +156,27 @@ namespace vrt
 
             static u8 max_offset(u32 val)
             {
-                val = pmax(val, val >> 16);
+
+                u8 max_off = 0;
+                // Sprawdzamy wszystkie 8 oktantów w deskryptorze
+                for (int i = 0; i < 8; ++i)
+                {
+                    u32 chunk = (val >> (i * 4)) & 0xF;
+                    if (chunk & 0b1000) // Jeśli Valid Bit jest zapalony
+                    {
+                        u8 offset = chunk & 0b0111;
+                        if (offset > max_off)
+                        {
+                            max_off = offset;
+                        }
+                    }
+                }
+                return max_off;
+
+                /*val = pmax(val, val >> 16);
                 val = pmax(val, val >> 8);
                 val = pmax(val, val >> 4);
-                return val & 0b0111;
+                return val & 0b0111;*/
             }
         };
 	}
