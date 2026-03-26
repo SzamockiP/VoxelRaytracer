@@ -15,7 +15,7 @@
 #include <vrt/gfx/window.hpp>
 #include <vrt/gfx/presenter.hpp>
 
-#include <vrt/accel/dag.hpp>
+#include <vrt/accel/dag_v1.hpp>
 
 using namespace vrt;
 
@@ -49,12 +49,12 @@ int main()
 
     
 
-    vrt::Dag dag;
+    vrt::v1::Dag dag;
     int tree_depth = 10;
     auto root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/1024c.bin");
     dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/1024c.vdag");
 
-    tree_depth = 11;
+    /*tree_depth = 11;
     root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/2048c.bin");
     dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/2048c.vdag");
 
@@ -72,7 +72,7 @@ int main()
 
     tree_depth = 15;
     root = dag.build(tree_depth, "C:/Users/Piotr/Downloads/San_Miguel/bin/32768c.bin");
-    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/32768c.vdag");
+    dag.save("C:/Users/Piotr/Downloads/San_Miguel/vdag/32768c.vdag");*/
 
     // Pozycja startowa i speed kamery = 2^(depth-4), czyli ~1/16 rozmiaru sceny
     const float cam_scale = static_cast<float>(1u << std::max(0, tree_depth - 4));
@@ -130,7 +130,7 @@ int main()
 
                 glm::vec3 d = normalize(camera.get_ray(u, v).direction);
                 Ray r{ camera.position(), d, 1.0f / d };
-                Dag::Hit result = dag.intersect(r, tree_depth, root);
+                v1::Dag::Hit result = dag.intersect(r, tree_depth, root);
 
                 if (result.t == std::numeric_limits<float>::infinity())
                 {

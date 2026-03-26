@@ -8,18 +8,18 @@
 #include <stdexcept>
 #include <string_view>
 #include <unordered_map>
-#include <vrt/accel/dag.hpp>
+#include <vrt/accel/dag_v1.hpp>
 
 
 struct StackFrame
 {
-    vrt::Dag::Node node;
+    vrt::v1::Dag::Node node;
     float tx, ty, tz;
     float t_exit;
     vrt::u8 oct_idx;
 };
 
-vrt::Dag::Hit vrt::Dag::intersect(const Ray& ray, u8 depth,
+vrt::v1::Dag::Hit vrt::v1::Dag::intersect(const Ray& ray, u8 depth,
     const Node& root) const noexcept
 {
     constexpr float INF = std::numeric_limits<float>::infinity();
@@ -297,11 +297,11 @@ inline void hash_combine(size_t& seed, size_t hash_val)
 }
 
 template <typename T>
-vrt::Dag::Node insert_with_sliding_window(
+vrt::v1::Dag::Node insert_with_sliding_window(
     const TempNode<T>& temp,
     std::vector<T>& target_buffer,
     std::unordered_map<size_t, std::vector<int>>& index_cache,
-    std::unordered_map<size_t, vrt::Dag::Node>& memo_cache)
+    std::unordered_map<size_t, vrt::v1::Dag::Node>& memo_cache)
 {
     int N = temp.elements.size();
     if (N == 0) return { 0 };
@@ -402,7 +402,7 @@ vrt::Dag::Node insert_with_sliding_window(
     }
 
     // 6. Budowanie i zapis węzła
-    vrt::Dag::Node node;
+    vrt::v1::Dag::Node node;
     node.descriptor = 0;
     node.index = best_index;
 
@@ -419,12 +419,12 @@ vrt::Dag::Node insert_with_sliding_window(
     return node;
 }
 
-vrt::Dag::Node vrt::Dag::build(u8 depth,
+vrt::v1::Dag::Node vrt::v1::Dag::build(u8 depth,
     const std::filesystem::path& filepath)
 {
     if (!std::filesystem::exists(filepath))
     {
-        throw std::runtime_error("Error: vrt::Dag::build filepath doesn't exist.");
+        throw std::runtime_error("Error: vrt::v1::Dag::build filepath doesn't exist.");
     }
 
     std::ifstream file(filepath, std::ios::binary);
@@ -587,7 +587,7 @@ vrt::Dag::Node vrt::Dag::build(u8 depth,
     return nodes_.empty() ? Node{} : nodes_.back();
 }
 
-void vrt::Dag::save(const std::filesystem::path& filepath) const
+void vrt::v1::Dag::save(const std::filesystem::path& filepath) const
 {
     if (nodes_.empty() && leaves_.empty())
         return;
@@ -612,7 +612,7 @@ void vrt::Dag::save(const std::filesystem::path& filepath) const
         file.write(reinterpret_cast<const char*>(leaves_.data()), num_leaves * sizeof(Voxel));
 }
 
-vrt::Dag::Node vrt::Dag::load(const std::filesystem::path& filepath)
+vrt::v1::Dag::Node vrt::v1::Dag::load(const std::filesystem::path& filepath)
 {
     std::ifstream file(filepath, std::ios::binary);
     if (!file)

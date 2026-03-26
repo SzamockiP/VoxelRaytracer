@@ -13,86 +13,89 @@
 
 namespace vrt
 {
-    class Dag
+    namespace v1
     {
-    public:
-        union Voxel
+        class Dag
         {
-            u32 rgbe;
-            struct
+        public:
+            union Voxel
             {
-                u8 e;
-                u8 b;
-                u8 g;
-                u8 r;
-            };
-
-            bool operator==(const Voxel& other) const
-            {
-                return rgbe == other.rgbe;
-            };
-        };
-
-        union Node
-        {
-            u64 raw;
-            struct
-            {
-                u32 index;
-                union
+                u32 rgbe;
+                struct
                 {
-                    u32 descriptor;
-                    Voxel voxel;
+                    u8 e;
+                    u8 b;
+                    u8 g;
+                    u8 r;
+                };
+
+                bool operator==(const Voxel& other) const
+                {
+                    return rgbe == other.rgbe;
                 };
             };
 
-            bool operator==(const Node& other) const
+            union Node
             {
-                return raw == other.raw;
-            }
+                u64 raw;
+                struct
+                {
+                    u32 index;
+                    union
+                    {
+                        u32 descriptor;
+                        Voxel voxel;
+                    };
+                };
 
-            bool is_leaf() const { return index & (1u << 31); }
+                bool operator==(const Node& other) const
+                {
+                    return raw == other.raw;
+                }
 
-            void set_child_offset(int octant, u32 offset)
+                bool is_leaf() const { return index & (1u << 31); }
+
+                void set_child_offset(int octant, u32 offset)
+                {
+                    // Bit 3 (0x8) to flaga validacji — sygnalizuje że oktant jest zajęty.
+                    // Bity 0-2 (0x7) to offset dziecka względem base index węzła (0-7).
+                    u32 safe_offset = (offset & 0x7) | 0x8;
+
+                    descriptor &= ~(0xF << (octant * 4));
+                    descriptor |= (safe_offset << (octant * 4));
+                }
+            };
+
+            struct Hit
             {
-                // Bit 3 (0x8) to flaga validacji — sygnalizuje że oktant jest zajęty.
-                // Bity 0-2 (0x7) to offset dziecka względem base index węzła (0-7).
-                u32 safe_offset = (offset & 0x7) | 0x8;
+                float t;
+                glm::vec3 normal;
+                Voxel voxel;
+            };
 
-                descriptor &= ~(0xF << (octant * 4));
-                descriptor |= (safe_offset << (octant * 4));
+            const std::vector<Node>& nodes() const { return nodes_; }
+            const std::vector<Voxel>& leaves() const { return leaves_; }
+
+            Node build(u8 depth, const std::filesystem::path& filepath);
+
+            void save(const std::filesystem::path& filepath) const;
+            Node load(const std::filesystem::path& filepath);
+
+            Hit intersect(const Ray& ray, u8 depth, const Node& root) const noexcept;
+
+            void debug()
+            {
+                std::size_t node_bytes = (nodes_.size() * sizeof(Node));
+                std::size_t leaf_bytes = (leaves_.size() * sizeof(Voxel));
+                std::println("=== DAG debug ====");
+                std::println("Nodes:   {:<10} | {:>10} B", nodes_.size(), node_bytes);
+                std::println("Voxels:  {:<10} | {:>10} B", leaves_.size(), leaf_bytes);
+
+                std::println("Used memory for nodes and voxels {} MB", (node_bytes + leaf_bytes) / 1024.0f / 1024.0f);
             }
+        private:
+            std::vector<Node>  nodes_;
+            std::vector<Voxel> leaves_;
         };
-
-        struct Hit
-        {
-            float t;
-            glm::vec3 normal;
-            Voxel voxel;
-        };
-
-        const std::vector<Node>& nodes() const { return nodes_; }
-        const std::vector<Voxel>& leaves() const { return leaves_; }
-
-        Node build(u8 depth, const std::filesystem::path& filepath);
-
-        void save(const std::filesystem::path& filepath) const;
-        Node load(const std::filesystem::path& filepath);
-
-        Hit intersect(const Ray& ray, u8 depth, const Node& root) const noexcept;
-
-        void debug()
-        {
-            std::size_t node_bytes = (nodes_.size() * sizeof(Node));
-            std::size_t leaf_bytes = (leaves_.size() * sizeof(Voxel));
-            std::println("=== DAG debug ====");
-            std::println("Nodes:   {:<10} | {:>10} B", nodes_.size(), node_bytes);
-            std::println("Voxels:  {:<10} | {:>10} B", leaves_.size(), leaf_bytes);
-
-            std::println("Used memory for nodes and voxels {} MB", (node_bytes + leaf_bytes) / 1024.0f / 1024.0f);
-        }
-    private:
-        std::vector<Node>  nodes_;
-        std::vector<Voxel> leaves_;
-    };
+    }
 }
