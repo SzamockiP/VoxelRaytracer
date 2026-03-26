@@ -1,3 +1,4 @@
+#pragma once
 #include <vector>
 #include <filesystem>
 
@@ -6,8 +7,8 @@
 
 namespace vrt
 {
-	namespace v2
-	{
+    namespace v2
+    {
         class Dag
         {
         public:
@@ -55,7 +56,6 @@ namespace vrt
 
                 u8 child_count() const
                 {
-
                     if (descriptor == 0) return 0;
                     return max_offset(descriptor) + 1;
                 }
@@ -68,7 +68,6 @@ namespace vrt
                 Voxel voxel;
             };
 
-
             Node node_view(u32 index) const
             {
                 return { .descriptor = nodes_[index] };
@@ -77,8 +76,7 @@ namespace vrt
             u32 child_index(u32 index, u8 octant) const
             {
                 Node n = node_view(index);
-                u8 offset = n.child_offset(offset);
-
+                u8 offset = n.child_offset(octant);
                 return nodes_[index + offset + 1];
             }
 
@@ -86,66 +84,66 @@ namespace vrt
 
             u32 build(u8 depth, const std::filesystem::path& filepath);
 
-
-            // Rozmiar samej topologii (geometrii i wskaźników) w bajtach
             size_t topology_size_bytes() const
             {
                 return nodes_.size() * sizeof(u32);
             }
 
-            // Całkowity rozmiar struktury w pamięci (w bajtach)
-            size_t total_size_bytes() const
+            size_t leaves_size_bytes() const
             {
-                return topology_size_bytes();
+                return geometry_leaves_.size() * sizeof(u8);
             }
 
-            // Liczba unikalnych węzłów topologicznych
+            size_t total_size_bytes() const
+            {
+                return topology_size_bytes() + leaves_size_bytes();
+            }
+
             size_t num_nodes() const
             {
                 size_t count = 0;
                 size_t i = 0;
-                // Skaczemy po tablicy dokładnie tak samo jak w fazie kompresji
                 while (i < nodes_.size())
                 {
                     count++;
                     u32 desc = nodes_[i];
                     u32 child_count = (desc == 0) ? 0 : (max_offset(desc) + 1);
-                    i += 1 + child_count; // Skok o deskryptor + jego wskaźniki
+                    i += 1 + child_count;
                 }
                 return count;
+            }
+
+            size_t num_leaves() const
+            {
+                return geometry_leaves_.size();
             }
 
             void print_stats() const
             {
                 double topo_mb = topology_size_bytes() / (1024.0 * 1024.0);
+                double leaves_mb = leaves_size_bytes() / (1024.0 * 1024.0);
                 double total_mb = total_size_bytes() / (1024.0 * 1024.0);
 
                 std::printf("\n================ SVDAG V2.0 STATS ================\n");
                 std::printf("Unique Nodes : %zu\n", num_nodes());
+                std::printf("Unique Leaves: %zu\n", num_leaves());
                 std::printf("Topology Size: %zu B (%.2f MB)\n", topology_size_bytes(), topo_mb);
+                std::printf("Leaves Size  : %zu B (%.2f MB)\n", leaves_size_bytes(), leaves_mb);
                 std::printf("Total Size   : %zu B (%.2f MB)\n", total_size_bytes(), total_mb);
                 std::printf("==================================================\n\n");
             }
 
         private:
             std::vector<u32> nodes_;
-
-            static u32 pmax(u32 x, u32 y)
-            {
-                u32 m_top = ((x | 0x88888888) - y) & 0x88888888;
-                u32 m = m_top | (m_top - (m_top >> 3));
-                return (x & m) | (y & ~m);
-            }
+            std::vector<u8> geometry_leaves_;
 
             static u8 max_offset(u32 val)
             {
-
                 u8 max_off = 0;
-                // Sprawdzamy wszystkie 8 oktantów w deskryptorze
                 for (int i = 0; i < 8; ++i)
                 {
                     u32 chunk = (val >> (i * 4)) & 0xF;
-                    if (chunk & 0b1000) // Jeśli Valid Bit jest zapalony
+                    if (chunk & 0b1000)
                     {
                         u8 offset = chunk & 0b0111;
                         if (offset > max_off)
@@ -155,12 +153,7 @@ namespace vrt
                     }
                 }
                 return max_off;
-
-                /*val = pmax(val, val >> 16);
-                val = pmax(val, val >> 8);
-                val = pmax(val, val >> 4);
-                return val & 0b0111;*/
             }
         };
-	}
+    }
 }
